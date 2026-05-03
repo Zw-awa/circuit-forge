@@ -31,7 +31,7 @@ pub fn add_component(
     };
 
     let mut eng = engine.lock().map_err(|e| e.to_string())?;
-    let (comp_id, input_pins, output_pins) = eng.graph.add_component(kind, x, y);
+    let (comp_id, input_pins, output_pins) = eng.graph.add_component(kind, x, y)?;
 
     let to_pin_json = |pid: &u32| {
         let pin = &eng.graph.pins[pid];

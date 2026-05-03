@@ -172,10 +172,47 @@ export function generateTextureAtlas(theme: 'dark' | 'light' = 'dark'): HTMLCanv
   return canvas;
 }
 
+export function generateSubCircuitTexture(name: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const label = name.slice(0, 3);
+
+  ctx.fillStyle = '#2a3a5e';
+  ctx.fillRect(0, 0, 64, 64);
+
+  ctx.strokeStyle = '#7c6ff0';
+  ctx.lineWidth = 2;
+  const bx = 4, by = 4, bw = 56, bh = 56, r = 8;
+  ctx.beginPath();
+  ctx.moveTo(bx + r, by);
+  ctx.lineTo(bx + bw - r, by);
+  ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
+  ctx.lineTo(bx + bw, by + bh - r);
+  ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
+  ctx.lineTo(bx + r, by + bh);
+  ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
+  ctx.lineTo(bx, by + r);
+  ctx.arcTo(bx, by, bx + r, by, r);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.fillStyle = '#e0e0ff';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, 32, 32);
+
+  return canvas;
+}
+
 export class TextureAtlas {
   private gl: WebGL2RenderingContext;
   texture: WebGLTexture;
   private uvMap: Record<string, { u0: number; v0: number; u1: number; v1: number }>;
+  private subTextures: Map<number, HTMLCanvasElement> = new Map();
+  private nextSubSlot = 16;
 
   constructor(gl: WebGL2RenderingContext, theme: 'dark' | 'light' = 'dark') {
     this.gl = gl;
@@ -186,6 +223,12 @@ export class TextureAtlas {
   private createTexture(theme: 'dark' | 'light'): WebGLTexture {
     const gl = this.gl;
     const canvas = generateTextureAtlas(theme);
+
+    for (const [slot, subCanvas] of this.subTextures) {
+      const subCtx = canvas.getContext('2d')!;
+      subCtx.drawImage(subCanvas, slot * 64, 0);
+    }
+
     const texture = gl.createTexture();
     if (!texture) {
       throw new Error('Failed to create texture atlas');
@@ -202,6 +245,38 @@ export class TextureAtlas {
   regenerate(theme: 'dark' | 'light'): void {
     this.gl.deleteTexture(this.texture);
     this.texture = this.createTexture(theme);
+  }
+
+  registerSubCircuit(name: string): string {
+    const slotKey = `subcircuit_${name}`;
+    if (this.uvMap[slotKey]) return slotKey;
+
+    const canvas = generateSubCircuitTexture(name);
+    const slot = this.nextSubSlot++;
+
+    const atlasWidth = 1024;
+    const atlasHeight = 64;
+    const u0 = (slot * 64) / atlasWidth;
+    const u1 = u0 + 64 / atlasWidth;
+    const v0 = 0;
+    const v1 = 64 / atlasHeight;
+
+    this.uvMap[slotKey] = { u0, v0, u1, v1 };
+    this.subTextures.set(slot, canvas);
+
+    const atlasCanvas = document.createElement('canvas');
+    atlasCanvas.width = atlasWidth;
+    atlasCanvas.height = atlasHeight;
+    const ctx = atlasCanvas.getContext('2d')!;
+    for (const [s, sc] of this.subTextures) {
+      ctx.drawImage(sc, s * 64, 0);
+    }
+
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, slot * 64, 0, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+
+    return slotKey;
   }
 
   private buildUVMap(): Record<string, { u0: number; v0: number; u1: number; v1: number }> {

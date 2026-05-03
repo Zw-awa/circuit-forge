@@ -2,6 +2,9 @@ mod circuit;
 mod simulation;
 mod project;
 mod commands;
+mod rules;
+mod scripting;
+mod verification;
 
 use std::sync::{Arc, Mutex};
 use simulation::engine::SimulationEngine;
@@ -39,8 +42,32 @@ pub fn run() {
             commands::simulation_cmds::set_sim_speed,
             commands::simulation_cmds::sim_step_n,
             commands::simulation_cmds::get_signal_history,
+            commands::simulation_cmds::get_rule_packs,
+            commands::simulation_cmds::set_active_rule_pack,
+            commands::simulation_cmds::create_custom_rule_pack,
+            commands::simulation_cmds::delete_custom_rule_pack,
             commands::project_cmds::save_project,
             commands::project_cmds::load_project,
+            commands::project_cmds::export_custom_component,
+            commands::project_cmds::import_custom_component,
+            commands::custom_cmds::create_subcircuit_def,
+            commands::custom_cmds::update_subcircuit_def,
+            commands::custom_cmds::delete_subcircuit_def,
+            commands::custom_cmds::get_subcircuit_defs,
+            commands::custom_cmds::add_subcircuit_instance,
+            commands::custom_cmds::enter_subcircuit,
+            commands::custom_cmds::exit_subcircuit,
+            commands::custom_cmds::get_lua_component_defs,
+            commands::custom_cmds::create_lua_component_def,
+            commands::custom_cmds::update_lua_component_def,
+            commands::custom_cmds::delete_lua_component_def,
+            commands::custom_cmds::add_lua_component_instance,
+            commands::custom_cmds::validate_lua_script,
+            commands::custom_cmds::create_truth_table,
+            commands::custom_cmds::update_truth_table,
+            commands::custom_cmds::delete_truth_table,
+            commands::custom_cmds::get_truth_table,
+            commands::custom_cmds::verify_truth_table_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

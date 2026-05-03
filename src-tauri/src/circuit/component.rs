@@ -27,4 +27,7 @@ pub struct Component {
     #[serde(skip)]
     pub delay_buffer: Option<VecDeque<Signal>>,
     pub bus_width: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lua_state: Option<serde_json::Value>,
 }

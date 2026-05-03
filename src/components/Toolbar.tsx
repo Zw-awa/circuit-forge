@@ -8,8 +8,11 @@ import type { ComponentKind, CircuitComponent, Pin, Wire } from '../types/circui
 import { editorStore, useEditorStore } from '../stores/editorStore';
 import { historyStore, useHistoryStore } from '../stores/historyStore';
 import { simulationStore, useSimulationStore } from '../stores/simulationStore';
+import { useRuleStore } from '../stores/ruleStore';
 import { simStart, simPause, simStep, simReset, setSimSpeed, setSimMode, simStepN } from '../ipc/simulationIpc';
 import { SnapToGridCmd } from '../commands/SnapToGridCmd';
+import SubCircuitCreator from './SubCircuitCreator';
+import RuleEditor from './RuleEditor';
 
 const SPEEDS: Array<{ label: string; value: number }> = [
   { label: 'simulation.speed025x', value: 0.25 },
@@ -46,8 +49,23 @@ function Toolbar() {
   const speedMultiplier = useSimulationStore((s) => s.speedMultiplier);
   const canvasMode = useEditorStore((s) => s.canvasMode);
   const setCanvasMode = useEditorStore((s) => s.setCanvasMode);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const components = useEditorStore((s) => s.components);
+  const wires = useEditorStore((s) => s.wires);
+  const pins = useEditorStore((s) => s.pins);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [stepNInput, setStepNInput] = useState<string | null>(null);
+  const [showEncapsulate, setShowEncapsulate] = useState(false);
+  const [showRuleEditor, setShowRuleEditor] = useState(false);
+
+  const rulePacks = useRuleStore((s) => s.rulePacks);
+  const activeRulePackId = useRuleStore((s) => s.activeRulePackId);
+  const setActiveRulePack = useRuleStore((s) => s.setActiveRulePack);
+  const loadRulePacks = useRuleStore((s) => s.loadRulePacks);
+
+  useEffect(() => {
+    loadRulePacks();
+  }, [loadRulePacks]);
 
   const handleSpeedChange = useCallback(async (multiplier: number) => {
     try {
@@ -76,8 +94,6 @@ function Toolbar() {
     }
   }, [stepNInput]);
 
-  // ---- Save/Load handlers ----
-
   async function handleSave() {
     try {
       const json = await saveProject();
@@ -105,12 +121,11 @@ function Toolbar() {
         const json = await readTextFile(path as string);
         const result = await loadProject(json);
 
-        // Clear all state
+        await simReset();
         editorStore.getState().clearCircuit();
         historyStore.getState().clear();
         simulationStore.getState().reset();
 
-        // Build component map for pin worldX/worldY calculation
         const compMap = new Map<number, ComponentData>(
           result.components.map((c: ComponentData) => [c.id, c]),
         );
@@ -158,8 +173,6 @@ function Toolbar() {
     }
   }
 
-  // ---- Keyboard shortcut listeners ----
-
   useEffect(() => {
     const onSave = () => { handleSave(); };
     const onOpen = () => { handleLoad(); };
@@ -170,6 +183,14 @@ function Toolbar() {
       window.removeEventListener('circuit-open', onOpen);
     };
   }, []);
+
+  const selectedCount = selectedIds.size;
+  const hasSelectedComponents = selectedCount > 0 &&
+    Array.from(selectedIds).some((id) => components.has(id));
+
+  const encapsulateClick = () => {
+    setShowEncapsulate(true);
+  };
 
   return (
     <>
@@ -202,6 +223,41 @@ function Toolbar() {
           title={t('toolbar.delete')}
         >
           {t('toolbar.delete')} (4)
+        </button>
+      </div>
+
+      <div className="toolbar-divider" />
+
+      {hasSelectedComponents && (
+        <>
+          <div className="toolbar-group">
+            <button
+              onClick={encapsulateClick}
+              title={t('subcircuit.encapsulate')}
+            >
+              📦 {t('subcircuit.encapsulate')}
+            </button>
+          </div>
+          <div className="toolbar-divider" />
+        </>
+      )}
+
+      <div className="toolbar-group">
+        <select
+          className="toolbar-select"
+          value={activeRulePackId}
+          onChange={(e) => setActiveRulePack(parseInt(e.target.value, 10))}
+          title={t('rules.title')}
+        >
+          {rulePacks.map((rp) => (
+            <option key={rp.id} value={rp.id}>{rp.name}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowRuleEditor(true)}
+          title={t('rules.edit')}
+        >
+          ⚙
         </button>
       </div>
 
@@ -367,6 +423,42 @@ function Toolbar() {
           );
         })}
       </div>
+    )}
+
+    {showEncapsulate && (() => {
+        const selCompIds = Array.from(selectedIds).filter((id) => components.has(id));
+        const danglingPins: Array<{ pinId: number; name: string; direction: 'input' | 'output' }> = [];
+
+        for (const pin of pins.values()) {
+          if (!selCompIds.includes(pin.ownerId)) continue;
+          for (const wire of wires.values()) {
+            const otherId = wire.start.id === pin.id ? wire.end.id : wire.start.id;
+            if (wire.start.id !== pin.id && wire.end.id !== pin.id) continue;
+            const otherPin = pins.get(otherId);
+            if (otherPin && !selCompIds.includes(otherPin.ownerId)) {
+              const idx = danglingPins.findIndex((dp) => dp.pinId === pin.id);
+              if (idx < 0) {
+                danglingPins.push({
+                  pinId: pin.id,
+                  name: `Pin ${danglingPins.length + 1}`,
+                  direction: pin.isOutput ? 'output' : 'input',
+                });
+              }
+            }
+          }
+        }
+
+        return (
+          <SubCircuitCreator
+            onClose={() => setShowEncapsulate(false)}
+            selectedComponentIds={selCompIds}
+            danglingPins={danglingPins}
+          />
+        );
+      })()}
+
+    {showRuleEditor && (
+      <RuleEditor onClose={() => setShowRuleEditor(false)} />
     )}
     </>
   );

@@ -1,5 +1,6 @@
 import type { Command } from './Command';
 import { addComponent, removeComponent } from '../ipc/simulationIpc';
+import { addSubCircuitInstance, addLuaComponentInstance } from '../ipc/customComponentIpc';
 import { editorStore } from '../stores/editorStore';
 import type { ComponentKind } from '../types/circuit';
 import type { Pin } from '../types/circuit';
@@ -10,19 +11,40 @@ export class PlaceComponentCmd implements Command {
   private kind: ComponentKind;
   private x: number;
   private y: number;
+  private subCircuitDefId: number | null;
+  private luaDefId: number | null;
   private resultId: number | null = null;
   private componentPins: Pin[] = [];
   private inputPinIds: number[] = [];
   private outputPinIds: number[] = [];
 
-  constructor(kind: ComponentKind, x: number, y: number) {
+  constructor(
+    kind: ComponentKind,
+    x: number,
+    y: number,
+    subCircuitDefId: number | null = null,
+    luaDefId: number | null = null,
+  ) {
     this.kind = kind;
     this.x = x;
     this.y = y;
+    this.subCircuitDefId = subCircuitDefId;
+    this.luaDefId = luaDefId;
   }
 
   async execute(): Promise<void> {
-    const result = await addComponent(this.kind, this.x, this.y);
+    let result;
+    let finalKind = this.kind;
+
+    if (this.kind === 'SubCircuit' && this.subCircuitDefId !== null) {
+      result = await addSubCircuitInstance(this.subCircuitDefId, this.x, this.y);
+      finalKind = 'SubCircuit';
+    } else if (this.kind === 'LuaScript' && this.luaDefId !== null) {
+      result = await addLuaComponentInstance(this.luaDefId, this.x, this.y);
+      finalKind = 'LuaScript';
+    } else {
+      result = await addComponent(this.kind, this.x, this.y);
+    }
 
     this.resultId = result.componentId;
     this.inputPinIds = [];
@@ -58,7 +80,7 @@ export class PlaceComponentCmd implements Command {
     editorStore.getState().addPins(this.componentPins);
     editorStore.getState().addComponent({
       id: result.componentId,
-      kind: this.kind,
+      kind: finalKind,
       x: this.x,
       y: this.y,
       inputPins: this.inputPinIds,

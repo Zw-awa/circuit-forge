@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { WireEndpoint } from '../types/circuit';
+import type { RulePack } from '../types/rules';
 
 // ---- Type definitions ----
 
@@ -177,4 +178,26 @@ export async function loadProject(json: string): Promise<LoadProjectResult> {
 
 export function listenSimTick(callback: (payload: SimTickPayload) => void): Promise<() => void> {
   return listen<SimTickPayload>("sim-tick", (event) => callback(event.payload));
+}
+
+// ---- Rule pack commands ----
+
+export async function getRulePacks(): Promise<RulePack[]> {
+  return invoke<RulePack[]>('get_rule_packs');
+}
+
+export async function setActiveRulePack(id: number): Promise<void> {
+  return invoke('set_active_rule_pack', { id });
+}
+
+export async function createCustomRulePack(pack: Partial<RulePack>): Promise<number> {
+  return invoke<number>('create_custom_rule_pack', { packJson: pack });
+}
+
+export async function updateCustomRulePack(id: number, pack: Partial<RulePack>): Promise<void> {
+  return invoke('update_custom_rule_pack', { id, packJson: pack });
+}
+
+export async function deleteCustomRulePack(id: number): Promise<void> {
+  return invoke('delete_custom_rule_pack', { id });
 }

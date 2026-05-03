@@ -2,7 +2,8 @@ export type ComponentKind =
   | 'And' | 'Or' | 'Not' | 'Nand' | 'Xor' | 'Switch' | 'Led'
   | 'Button' | 'Clock' | 'Random' | 'Constant'
   | 'SevenSegment' | 'Oscilloscope'
-  | 'DelayLine' | 'Splitter' | 'Merger';
+  | 'DelayLine' | 'Splitter' | 'Merger'
+  | 'SubCircuit' | 'LuaScript';
 
 export interface CircuitComponent {
   id: number;
@@ -22,6 +23,9 @@ export interface CircuitComponent {
   oscilloscopeTimeWindow?: number;
   delayTicks?: number;
   busWidth?: number;
+  // Phase 3 fields
+  subCircuitDefId?: number;
+  luaScriptDefId?: number;
 }
 
 export interface Pin {
@@ -52,4 +56,10 @@ export interface Wire {
   color?: number;
 }
 
-export type Signal = 'High' | 'Low' | 'Bus';
+export type Signal = 'High' | 'Low' | 'Bus' | 'Integer' | 'Float';
+
+/** Returns true only for a "High" signal. Bus/Integer/Float signals
+ *  (including Bus(0)) are not considered high. */
+export function is_high(signal: Signal | string): boolean {
+  return signal === 'High';
+}

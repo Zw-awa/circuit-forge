@@ -5,6 +5,8 @@ use super::component::Component;
 use super::pin::Pin;
 use super::wire::{Wire, WireEndpoint};
 use super::junction::Junction;
+use super::subcircuit::SubCircuitDef;
+use crate::scripting::lua_engine::LuaComponentDef;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CircuitGraph {
@@ -39,7 +41,12 @@ impl CircuitGraph {
         kind: ComponentKind,
         x: f32,
         y: f32,
-    ) -> (ComponentId, Vec<PinId>, Vec<PinId>) {
+    ) -> Result<(ComponentId, Vec<PinId>, Vec<PinId>), String> {
+        match kind {
+            ComponentKind::SubCircuit(_) => return Err("use add_subcircuit_component instead".into()),
+            ComponentKind::LuaScript(_) => return Err("use add_lua_component instead".into()),
+            _ => {}
+        }
         let comp_id = self.alloc_id();
 
         let (input_offsets, output_offsets): (Vec<(f32, f32)>, Vec<(f32, f32)>) = match kind {
@@ -103,6 +110,9 @@ impl CircuitGraph {
                     inputs.push((-1.0, start_y + spacing * i as f32));
                 }
                 (inputs, vec![(1.0, 0.0)])
+            }
+            ComponentKind::SubCircuit(_) | ComponentKind::LuaScript(_) => {
+                (Vec::new(), Vec::new())
             }
         };
 
@@ -176,10 +186,11 @@ impl CircuitGraph {
                 } else {
                     Some(1)
                 },
+                lua_state: None,
             },
         );
 
-        (comp_id, input_pins, output_pins)
+        Ok((comp_id, input_pins, output_pins))
     }
 
     pub fn add_junction(&mut self, x: f32, y: f32, net_id: NetId) -> u32 {
@@ -413,5 +424,256 @@ impl CircuitGraph {
         comp.x = x;
         comp.y = y;
         Ok(())
+    }
+
+    pub fn add_subcircuit_component(
+        &mut self,
+        def: &SubCircuitDef,
+        x: f32,
+        y: f32,
+    ) -> Result<(ComponentId, Vec<PinId>, Vec<PinId>), String> {
+        let comp_id = self.alloc_id();
+        let mut input_pins = Vec::new();
+        let mut output_pins = Vec::new();
+
+        for ext_pin in &def.external_pins {
+            let pin_id = self.alloc_id();
+            self.pins.insert(
+                pin_id,
+                Pin {
+                    id: pin_id,
+                    owner: comp_id,
+                    is_output: ext_pin.is_output,
+                    net: None,
+                    offset_x: ext_pin.offset_x,
+                    offset_y: ext_pin.offset_y,
+                },
+            );
+            if ext_pin.is_output {
+                output_pins.push(pin_id);
+            } else {
+                input_pins.push(pin_id);
+            }
+        }
+
+        let comp = Component {
+            id: comp_id,
+            kind: ComponentKind::SubCircuit(def.id),
+            x,
+            y,
+            input_pins: input_pins.clone(),
+            output_pins: output_pins.clone(),
+            toggle_state: None,
+            press_state: None,
+            clock_period: None,
+            clock_duty: None,
+            clock_counter: None,
+            random_probability: None,
+            constant_value: None,
+            oscilloscope_channels: None,
+            oscilloscope_time_window: None,
+            delay_ticks: None,
+            delay_buffer: None,
+            bus_width: None,
+            lua_state: None,
+        };
+        self.components.insert(comp_id, comp);
+        Ok((comp_id, input_pins, output_pins))
+    }
+
+    pub fn add_lua_component(
+        &mut self,
+        def: &LuaComponentDef,
+        x: f32,
+        y: f32,
+    ) -> Result<(ComponentId, Vec<PinId>, Vec<PinId>), String> {
+        let comp_id = self.alloc_id();
+        let mut input_pins = Vec::new();
+        let mut output_pins = Vec::new();
+
+        for lua_pin in &def.input_pins {
+            let pin_id = self.alloc_id();
+            self.pins.insert(
+                pin_id,
+                Pin {
+                    id: pin_id,
+                    owner: comp_id,
+                    is_output: false,
+                    net: None,
+                    offset_x: lua_pin.offset_x,
+                    offset_y: lua_pin.offset_y,
+                },
+            );
+            input_pins.push(pin_id);
+        }
+
+        for lua_pin in &def.output_pins {
+            let pin_id = self.alloc_id();
+            self.pins.insert(
+                pin_id,
+                Pin {
+                    id: pin_id,
+                    owner: comp_id,
+                    is_output: true,
+                    net: None,
+                    offset_x: lua_pin.offset_x,
+                    offset_y: lua_pin.offset_y,
+                },
+            );
+            output_pins.push(pin_id);
+        }
+
+        let comp = Component {
+            id: comp_id,
+            kind: ComponentKind::LuaScript(def.id),
+            x,
+            y,
+            input_pins: input_pins.clone(),
+            output_pins: output_pins.clone(),
+            toggle_state: None,
+            press_state: None,
+            clock_period: None,
+            clock_duty: None,
+            clock_counter: None,
+            random_probability: None,
+            constant_value: None,
+            oscilloscope_channels: None,
+            oscilloscope_time_window: None,
+            delay_ticks: None,
+            delay_buffer: None,
+            bus_width: None,
+            lua_state: None,
+        };
+        self.components.insert(comp_id, comp);
+        Ok((comp_id, input_pins, output_pins))
+    }
+
+    pub fn extract_subgraph(
+        &self,
+        component_ids: &[ComponentId],
+    ) -> Result<CircuitGraph, String> {
+        use std::collections::HashSet;
+        let mut sub = CircuitGraph::new();
+        sub.next_id = self.next_id;
+
+        for &comp_id in component_ids {
+            if let Some(comp) = self.components.get(&comp_id) {
+                sub.components.insert(comp_id, comp.clone());
+                let all_pins: Vec<PinId> = comp
+                    .input_pins
+                    .iter()
+                    .chain(comp.output_pins.iter())
+                    .copied()
+                    .collect();
+                for pin_id in all_pins {
+                    if let Some(pin) = self.pins.get(&pin_id) {
+                        sub.pins.insert(pin_id, pin.clone());
+                    }
+                }
+            }
+        }
+
+        let sub_pin_ids: HashSet<PinId> = sub.pins.keys().copied().collect();
+        for (wire_id, wire) in &self.wires {
+            let pin_a = match &wire.start {
+                WireEndpoint::Pin(pid) => sub_pin_ids.contains(pid),
+                _ => false,
+            };
+            let pin_b = match &wire.end {
+                WireEndpoint::Pin(pid) => sub_pin_ids.contains(pid),
+                _ => false,
+            };
+            if pin_a && pin_b {
+                sub.wires.insert(*wire_id, wire.clone());
+            }
+        }
+
+        for (pin_id, pin) in &sub.pins {
+            if let Some(net_id) = pin.net {
+                sub.nets.entry(net_id).or_default().push(*pin_id);
+            }
+        }
+
+        sub.remap_graph_ids();
+
+        Ok(sub)
+    }
+
+    pub fn remap_graph_ids(&mut self) {
+        let mut id_map: HashMap<u32, u32> = HashMap::new();
+        let mut new_next = 1u32;
+
+        // Remap components
+        let old_comps: Vec<_> = self.components.drain().collect();
+        for (old_id, mut comp) in old_comps {
+            let new_id = new_next;
+            new_next += 1;
+            id_map.insert(old_id, new_id);
+            comp.id = new_id;
+            // Remap pin references in component
+            comp.input_pins = comp
+                .input_pins
+                .iter()
+                .map(|pid| id_map.get(pid).copied().unwrap_or(*pid))
+                .collect();
+            comp.output_pins = comp
+                .output_pins
+                .iter()
+                .map(|pid| id_map.get(pid).copied().unwrap_or(*pid))
+                .collect();
+            self.components.insert(new_id, comp);
+        }
+
+        // Remap pins
+        let old_pins: Vec<_> = self.pins.drain().collect();
+        for (old_id, mut pin) in old_pins {
+            let new_id = new_next;
+            new_next += 1;
+            id_map.insert(old_id, new_id);
+            pin.id = new_id;
+            pin.owner = id_map.get(&pin.owner).copied().unwrap_or(pin.owner);
+            self.pins.insert(new_id, pin);
+        }
+
+        // Remap wires
+        let old_wires: Vec<_> = self.wires.drain().collect();
+        for (old_id, mut wire) in old_wires {
+            let new_id = new_next;
+            new_next += 1;
+            id_map.insert(old_id, new_id);
+            wire.id = new_id;
+            match &mut wire.start {
+                WireEndpoint::Pin(pid) => *pid = id_map.get(pid).copied().unwrap_or(*pid),
+                _ => {}
+            }
+            match &mut wire.end {
+                WireEndpoint::Pin(pid) => *pid = id_map.get(pid).copied().unwrap_or(*pid),
+                _ => {}
+            }
+            self.wires.insert(new_id, wire);
+        }
+
+        // Remap junctions
+        let old_junctions: Vec<_> = self.junctions.drain().collect();
+        for (old_id, mut j) in old_junctions {
+            let new_id = new_next;
+            new_next += 1;
+            id_map.insert(old_id, new_id);
+            j.id = new_id;
+            self.junctions.insert(new_id, j);
+        }
+
+        // Rebuild nets from pins
+        self.nets.clear();
+        for (pin_id, pin) in &self.pins {
+            if let Some(net_id) = pin.net {
+                self.nets
+                    .entry(id_map.get(&net_id).copied().unwrap_or(net_id))
+                    .or_default()
+                    .push(*pin_id);
+            }
+        }
+
+        self.next_id = new_next;
     }
 }

@@ -4,7 +4,6 @@ import { editorStore } from '../../stores/editorStore';
 import { historyStore } from '../../stores/historyStore';
 import { DeleteComponentCmd } from '../../commands/DeleteComponentCmd';
 import { DeleteWireCmd } from '../../commands/DeleteWireCmd';
-import { CompositeCmd } from '../../commands/CompositeCmd';
 import { DeleteJunctionCmd } from '../../commands/DeleteJunctionCmd';
 
 export class DeleteTool implements Tool {
@@ -55,23 +54,7 @@ export class DeleteTool implements Tool {
   onPointerUp(_e: CanvasPointerEvent): void {}
 
   private deleteComponent(compId: number): void {
-    const state = editorStore.getState();
-    const comp = state.components.get(compId);
-    if (!comp) return;
-
-    const compPins = [...comp.inputPins, ...comp.outputPins];
-    const processedWireIds = new Set<number>();
-    const cmds: (DeleteWireCmd | DeleteComponentCmd)[] = [];
-
-    for (const wire of state.wires.values()) {
-      if ((compPins.includes(wire.start.id) || compPins.includes(wire.end.id)) && !processedWireIds.has(wire.id)) {
-        processedWireIds.add(wire.id);
-        cmds.push(new DeleteWireCmd(wire.id));
-      }
-    }
-    cmds.push(new DeleteComponentCmd(compId));
-
-    historyStore.getState().execute(new CompositeCmd(cmds));
+    historyStore.getState().execute(new DeleteComponentCmd(compId));
   }
 
   private deleteJunction(junctionId: number): void {

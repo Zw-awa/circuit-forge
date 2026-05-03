@@ -1,7 +1,10 @@
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 import { useEditorStore, editorStore } from '../stores/editorStore';
 import { useSimulationStore } from '../stores/simulationStore';
+import { useCustomComponentStore } from '../stores/customComponentStore';
 import { toggleSwitch, setComponentParam, pressButton, releaseButton, setConstantValue, setWireColor } from '../ipc/simulationIpc';
+import TruthTableEditor from './TruthTableEditor';
 
 const WIRE_COLORS: Array<{ label: string; argb: number }> = [
   { label: 'Default (Signal)', argb: 0 },
@@ -23,6 +26,9 @@ function PropertyPanel() {
   const wires = useEditorStore((s) => s.wires);
   const pins = useEditorStore((s) => s.pins);
   const signals = useSimulationStore((s) => s.signals);
+  const subCircuitDefs = useCustomComponentStore((s) => s.subCircuitDefs);
+
+  const [showTruthTable, setShowTruthTable] = useState(false);
 
   const selectedArray = Array.from(selectedIds);
   const count = selectedArray.length;
@@ -300,6 +306,37 @@ function PropertyPanel() {
               />
             </div>
           )}
+
+          {(comp.subCircuitDefId || comp.luaScriptDefId) && (() => {
+            const defId = comp.subCircuitDefId ?? comp.luaScriptDefId!;
+            const defType = comp.subCircuitDefId ? 'SubCircuit' : 'LuaScript';
+            const def = subCircuitDefs.find((d) => d.id === defId);
+            const defName = def?.name ?? `Custom ${defType}`;
+            const inputPinNames = comp.inputPins.map((_, i) => `In ${i + 1}`);
+            const outputPinNames = comp.outputPins.map((_, i) => `Out ${i + 1}`);
+            return (
+              <>
+                <div className="property-section">
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => setShowTruthTable(true)}
+                  >
+                    {t('truthTable.verify')}
+                  </button>
+                </div>
+                {showTruthTable && (
+                  <TruthTableEditor
+                    onClose={() => setShowTruthTable(false)}
+                    defId={defId}
+                    defName={defName}
+                    defType={defType}
+                    inputPinNames={inputPinNames}
+                    outputPinNames={outputPinNames}
+                  />
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     );

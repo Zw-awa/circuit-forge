@@ -3,6 +3,7 @@ use tauri::{Emitter, State, AppHandle};
 use crate::EngineState;
 use crate::circuit::types::Signal;
 use crate::circuit::types::SimMode;
+use crate::rules::presets::RulePack;
 use crate::simulation::engine::{SimStatus, SimEvent};
 
 fn signal_to_json_value(signal: &Signal) -> serde_json::Value {
@@ -10,6 +11,8 @@ fn signal_to_json_value(signal: &Signal) -> serde_json::Value {
         Signal::High => serde_json::json!("High"),
         Signal::Low => serde_json::json!("Low"),
         Signal::Bus(n) => serde_json::json!({ "Bus": n }),
+        Signal::Integer(n) => serde_json::json!({ "Integer": n }),
+        Signal::Float(n) => serde_json::json!({ "Float": n }),
     }
 }
 
@@ -325,6 +328,8 @@ pub fn get_signal_history(
                             Signal::High => serde_json::json!("High"),
                             Signal::Low => serde_json::json!("Low"),
                             Signal::Bus(v) => serde_json::json!(format!("Bus({})", v)),
+                            Signal::Integer(v) => serde_json::json!(format!("Integer({})", v)),
+                            Signal::Float(v) => serde_json::json!(format!("Float({})", v)),
                         }
                     })
                 })
@@ -333,4 +338,40 @@ pub fn get_signal_history(
         }
         None => Ok(serde_json::Value::Array(vec![])),
     }
+}
+
+#[tauri::command]
+pub fn get_rule_packs(
+    engine: State<'_, EngineState>,
+) -> Result<Vec<RulePack>, String> {
+    let eng = engine.lock().map_err(|e| e.to_string())?;
+    Ok(eng.rule_registry.list_all().into_iter().cloned().collect())
+}
+
+#[tauri::command]
+pub fn set_active_rule_pack(
+    engine: State<'_, EngineState>,
+    id: u32,
+) -> Result<(), String> {
+    let mut eng = engine.lock().map_err(|e| e.to_string())?;
+    eng.rule_registry.set_active(id)
+}
+
+#[tauri::command]
+pub fn create_custom_rule_pack(
+    engine: State<'_, EngineState>,
+    pack_json: serde_json::Value,
+) -> Result<u32, String> {
+    let mut eng = engine.lock().map_err(|e| e.to_string())?;
+    let pack: RulePack = serde_json::from_value(pack_json).map_err(|e| e.to_string())?;
+    Ok(eng.rule_registry.add_custom(pack))
+}
+
+#[tauri::command]
+pub fn delete_custom_rule_pack(
+    engine: State<'_, EngineState>,
+    id: u32,
+) -> Result<(), String> {
+    let mut eng = engine.lock().map_err(|e| e.to_string())?;
+    eng.rule_registry.remove_custom(id)
 }

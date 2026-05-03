@@ -220,25 +220,16 @@ export class InputManager {
     const selectedIds = state.selectedIds;
     if (selectedIds.size === 0) return;
 
-    const processedWireIds = new Set<number>();
-    const cmds: (DeleteWireCmd | DeleteComponentCmd)[] = [];
+    const cmds: (DeleteComponentCmd | DeleteWireCmd)[] = [];
 
     for (const id of selectedIds) {
       const comp = state.components.get(id);
       if (comp) {
-        const compPins = [...comp.inputPins, ...comp.outputPins];
-        for (const wire of state.wires.values()) {
-          if ((compPins.includes(wire.start.id) || compPins.includes(wire.end.id)) && !processedWireIds.has(wire.id)) {
-            processedWireIds.add(wire.id);
-            cmds.push(new DeleteWireCmd(wire.id));
-          }
-        }
         cmds.push(new DeleteComponentCmd(id));
       } else {
         const wire = state.wires.get(id);
-        if (wire && !processedWireIds.has(wire.id)) {
-          processedWireIds.add(wire.id);
-          cmds.push(new DeleteWireCmd(wire.id));
+        if (wire) {
+          cmds.push(new DeleteWireCmd(id));
         }
       }
     }

@@ -31,15 +31,23 @@ export class PlaceTool implements Tool {
     }
     if (e.button !== 0) return;
 
-    const kind = editorStore.getState().placingComponentKind;
+    const state = editorStore.getState();
+    const kind = state.placingComponentKind;
     if (!kind) return;
 
-    const cmd = new PlaceComponentCmd(kind as ComponentKind, e.gridX, e.gridY);
+    const cmd = new PlaceComponentCmd(
+      kind as ComponentKind,
+      e.gridX,
+      e.gridY,
+      state.activeSubCircuitDefId,
+      state.activeLuaDefId,
+    );
     historyStore.getState().execute(cmd);
   }
 
   onPointerMove(e: CanvasPointerEvent): void {
-    const kind = editorStore.getState().placingComponentKind;
+    const state = editorStore.getState();
+    const kind = state.placingComponentKind;
     if (!kind) return;
 
     this.renderer.setGhostComponent(kind as ComponentKind, e.gridX, e.gridY);

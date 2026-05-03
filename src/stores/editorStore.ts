@@ -1,7 +1,34 @@
 import { create } from 'zustand';
-import type { CircuitComponent, Wire, Pin, Junction } from '../types/circuit';
+import type { CircuitComponent, Wire, Pin, Junction, ComponentKind } from '../types/circuit';
 import type { ToolType, Viewport, CanvasMode } from '../types/editor';
-import type { ComponentKind } from '../types/circuit';
+import type { WireData } from '../ipc/simulationIpc';
+import { enterSubCircuit, exitSubCircuit } from '../ipc/customComponentIpc';
+
+function convertWireData(wire: WireData): Wire {
+  return {
+    id: wire.id,
+    start: 'Pin' in (wire.start as Record<string, unknown>)
+      ? { type: 'pin' as const, id: (wire.start as { Pin: number }).Pin }
+      : { type: 'junction' as const, id: (wire.start as { Junction: number }).Junction },
+    end: 'Pin' in (wire.end as Record<string, unknown>)
+      ? { type: 'pin' as const, id: (wire.end as { Pin: number }).Pin }
+      : { type: 'junction' as const, id: (wire.end as { Junction: number }).Junction },
+    netId: wire.netId,
+    color: wire.color ?? undefined,
+  };
+}
+
+interface SubCircuitFrame {
+  defId: number;
+  defName: string;
+  parentComponentId: number;
+  savedState: {
+    components: CircuitComponent[];
+    wires: Wire[];
+    pins: Pin[];
+    junctions: Junction[];
+  };
+}
 
 interface EditorState {
   components: Map<number, CircuitComponent>;
@@ -10,6 +37,8 @@ interface EditorState {
   junctions: Map<number, Junction>;
   activeTool: ToolType;
   placingComponentKind: ComponentKind | null;
+  activeSubCircuitDefId: number | null;
+  activeLuaDefId: number | null;
   selectedIds: Set<number>;
   hoveredId: number | null;
   viewport: Viewport;
@@ -18,6 +47,7 @@ interface EditorState {
   canvasMode: CanvasMode;
   activeWireColor: number | undefined;
   isDirty: boolean;
+  subCircuitStack: SubCircuitFrame[];
 
   addComponent: (comp: CircuitComponent) => void;
   setCursor: (x: number, y: number) => void;
@@ -29,6 +59,8 @@ interface EditorState {
   removePins: (ids: number[]) => void;
   setActiveTool: (tool: ToolType) => void;
   setPlacingComponentKind: (kind: ComponentKind | null) => void;
+  setActiveSubCircuitDefId: (id: number | null) => void;
+  setActiveLuaDefId: (id: number | null) => void;
   setSelection: (ids: number[]) => void;
   addToSelection: (id: number) => void;
   removeFromSelection: (id: number) => void;
@@ -43,15 +75,20 @@ interface EditorState {
   setWireColor: (color: number | undefined) => void;
   markDirty: () => void;
   markClean: () => void;
+  enterSubCircuit: (componentId: number) => Promise<void>;
+  exitSubCircuit: () => Promise<void>;
+  exitToLevel: (level: number) => Promise<void>;
 }
 
-const editorStore = create<EditorState>()((set) => ({
+export const editorStore = create<EditorState>()((set, get) => ({
   components: new Map(),
   wires: new Map(),
   pins: new Map(),
   junctions: new Map(),
   activeTool: 'select',
   placingComponentKind: null,
+  activeSubCircuitDefId: null,
+  activeLuaDefId: null,
   selectedIds: new Set(),
   hoveredId: null,
   viewport: { centerX: 0, centerY: 0, zoom: 40 },
@@ -60,6 +97,7 @@ const editorStore = create<EditorState>()((set) => ({
   canvasMode: 'grid',
   activeWireColor: undefined,
   isDirty: false,
+  subCircuitStack: [],
 
   setCursor: (x, y) => set({ cursorX: x, cursorY: y }),
 
@@ -157,6 +195,10 @@ const editorStore = create<EditorState>()((set) => ({
 
   setPlacingComponentKind: (kind) => set({ placingComponentKind: kind }),
 
+  setActiveSubCircuitDefId: (id) => set({ activeSubCircuitDefId: id }),
+
+  setActiveLuaDefId: (id) => set({ activeLuaDefId: id }),
+
   setSelection: (ids) => set({ selectedIds: new Set(ids) }),
 
   addToSelection: (id) =>
@@ -189,12 +231,15 @@ const editorStore = create<EditorState>()((set) => ({
       hoveredId: null,
       activeTool: 'select' as ToolType,
       placingComponentKind: null,
+      activeSubCircuitDefId: null,
+      activeLuaDefId: null,
       viewport: { centerX: 0, centerY: 0, zoom: 40 },
       cursorX: 0,
       cursorY: 0,
       canvasMode: 'grid',
       activeWireColor: undefined,
       isDirty: false,
+      subCircuitStack: [],
     }),
 
   clearCircuit: () =>
@@ -208,6 +253,7 @@ const editorStore = create<EditorState>()((set) => ({
       canvasMode: 'grid',
       activeWireColor: undefined,
       isDirty: false,
+      subCircuitStack: [],
     }),
 
   addJunction: (junction) =>
@@ -231,7 +277,88 @@ const editorStore = create<EditorState>()((set) => ({
   markDirty: () => set({ isDirty: true }),
 
   markClean: () => set({ isDirty: false }),
+
+  enterSubCircuit: async (componentId: number) => {
+    const state = get();
+    const comp = state.components.get(componentId);
+    if (!comp?.subCircuitDefId) return;
+
+    const innerData = await enterSubCircuit(componentId);
+
+    const savedState: SubCircuitFrame['savedState'] = {
+      components: Array.from(state.components.values()),
+      wires: Array.from(state.wires.values()),
+      pins: Array.from(state.pins.values()),
+      junctions: Array.from(state.junctions.values()),
+    };
+
+    const innerComps: CircuitComponent[] = innerData.components.map((c) => ({
+      id: c.id,
+      kind: c.kind as ComponentKind,
+      x: c.x,
+      y: c.y,
+      inputPins: c.inputPins,
+      outputPins: c.outputPins,
+    }));
+
+    const innerWires: Wire[] = innerData.wires.map(convertWireData);
+
+    const compMap = new Map<number, CircuitComponent>(
+      innerComps.map((c) => [c.id, c]),
+    );
+    const innerPins: Pin[] = innerData.pins.map((p) => {
+      const owner = compMap.get(p.owner);
+      return {
+        id: p.id,
+        ownerId: p.owner,
+        isOutput: p.isOutput,
+        offsetX: p.offsetX,
+        offsetY: p.offsetY,
+        worldX: (owner ? owner.x : 0) + p.offsetX,
+        worldY: (owner ? owner.y : 0) + p.offsetY,
+      };
+    });
+
+    set({
+      subCircuitStack: [
+        ...state.subCircuitStack,
+        {
+          defId: comp.subCircuitDefId,
+          defName: innerData.defName,
+          parentComponentId: componentId,
+          savedState,
+        },
+      ],
+      components: new Map(innerComps.map((c) => [c.id, c])),
+      wires: new Map(innerWires.map((w) => [w.id, w])),
+      pins: new Map(innerPins.map((p) => [p.id, p])),
+      junctions: new Map(),
+      selectedIds: new Set(),
+      hoveredId: null,
+    });
+  },
+
+  exitSubCircuit: async () => {
+    const { subCircuitStack } = get();
+    if (subCircuitStack.length === 0) return;
+    await exitSubCircuit();
+    const frame = subCircuitStack[subCircuitStack.length - 1];
+    set({
+      subCircuitStack: subCircuitStack.slice(0, -1),
+      components: new Map(frame.savedState.components.map((c) => [c.id, c])),
+      wires: new Map(frame.savedState.wires.map((w) => [w.id, w])),
+      pins: new Map(frame.savedState.pins.map((p) => [p.id, p])),
+      junctions: new Map(frame.savedState.junctions.map((j) => [j.id, j])),
+      selectedIds: new Set(),
+      hoveredId: null,
+    });
+  },
+
+  exitToLevel: async (level: number) => {
+    while (get().subCircuitStack.length > level) {
+      await get().exitSubCircuit();
+    }
+  },
 }));
 
 export const useEditorStore = editorStore;
-export { editorStore };

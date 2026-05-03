@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use crate::circuit::types::{ComponentId, NetId, Signal, ComponentKind};
+use crate::circuit::types::{ComponentId, NetId, Signal, ComponentKind, SignalType};
 use crate::circuit::component::Component;
 use crate::circuit::graph::CircuitGraph;
 use super::evaluator::evaluate_gate;
@@ -21,14 +21,14 @@ impl TickEngine {
         }
     }
 
-    pub fn tick(&mut self, graph: &CircuitGraph) -> HashMap<NetId, Signal> {
+    pub fn tick(&mut self, graph: &CircuitGraph, signal_type: &SignalType) -> HashMap<NetId, Signal> {
         self.tick_count += 1;
         self.next_signals = self.current_signals.clone();
         let mut comp_ids: Vec<ComponentId> = graph.components.keys().copied().collect();
         comp_ids.sort();
         for comp_id in comp_ids {
             if let Some(comp) = graph.components.get(&comp_id) {
-                self.evaluate_component_tick(comp, graph);
+                self.evaluate_component_tick(comp, graph, signal_type);
             }
         }
         let mut changed = HashMap::new();
@@ -51,6 +51,7 @@ impl TickEngine {
         &mut self,
         comp: &Component,
         graph: &CircuitGraph,
+        signal_type: &SignalType,
     ) {
         match comp.kind {
             ComponentKind::And
@@ -70,7 +71,7 @@ impl TickEngine {
                             .unwrap_or(Signal::Low)
                     })
                     .collect();
-                let output = evaluate_gate(comp.kind, &inputs);
+                let output = evaluate_gate(comp.kind, &inputs, signal_type);
                 for out_pin_id in &comp.output_pins {
                     if let Some(pin) = graph.pins.get(out_pin_id) {
                         if let Some(net_id) = pin.net {
@@ -189,6 +190,8 @@ impl TickEngine {
                     Signal::Bus(v) => v,
                     Signal::High => 1,
                     Signal::Low => 0,
+                    Signal::Integer(v) => v as u8,
+                    Signal::Float(v) => v.round() as u8,
                 };
                 for (i, out_pin_id) in comp.output_pins.iter().enumerate() {
                     let bit_signal = if (value >> i) & 1 == 1 { Signal::High } else { Signal::Low };

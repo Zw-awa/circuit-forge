@@ -44,17 +44,27 @@ export class SelectTool implements Tool {
 
     const hitId = this.picker.hitTestComponent(e.worldX, e.worldY);
 
-    // Double-click toggle for Switch
     const now = performance.now();
+
     if (hitId !== null && hitId === this.lastClickId && now - this.lastClickTime < 300) {
       const comp = editorStore.getState().components.get(hitId);
-      if (comp && comp.kind === 'Switch') {
-        toggleSwitch(hitId).then((changed) => {
-          simulationStore.getState().updateSignals(changed);
-        });
-        this.lastClickTime = 0;
-        this.lastClickId = null;
-        return;
+      if (comp) {
+        if (comp.kind === 'Switch') {
+          toggleSwitch(hitId).then((changed) => {
+            simulationStore.getState().updateSignals(changed);
+          });
+          this.lastClickTime = 0;
+          this.lastClickId = null;
+          return;
+        }
+        if (comp.kind === 'SubCircuit') {
+          editorStore.getState().enterSubCircuit(hitId).catch((e) => {
+            console.error('Failed to enter subcircuit:', e);
+          });
+          this.lastClickTime = 0;
+          this.lastClickId = null;
+          return;
+        }
       }
     }
     this.lastClickTime = now;

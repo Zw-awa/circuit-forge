@@ -4,11 +4,13 @@ import PropertyPanel from './PropertyPanel';
 import HistoryPanel from './HistoryPanel';
 import StatusBar from './StatusBar';
 import Canvas from './Canvas';
+import Breadcrumb from './Breadcrumb';
 
 function Layout() {
   return (
     <div className="layout">
       <Toolbar />
+      <Breadcrumb />
       <div className="editor-area">
         <ComponentPanel />
         <div className="canvas-container">
