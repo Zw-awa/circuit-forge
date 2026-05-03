@@ -1,0 +1,14 @@
+export const ZOOM_MIN = 10;
+export const ZOOM_MAX = 200;
+export const MAX_COMPONENTS = 4096;
+export const MAX_PINS = 8192;
+export const GRID_SNAP = 1.0;
+export const PIN_HIT_RADIUS = 0.3;
+export const COMPONENT_SIZE = 2.0;
+export const PIN_DOT_SIZE = 0.15;
+export const DEFAULT_ZOOM = 40;
+export const DEFAULT_TICK_RATE = 10;
+export const SIGNAL_HIGH_COLOR = [0.29, 0.87, 0.50] as const;
+export const SIGNAL_LOW_COLOR = [0.42, 0.45, 0.51] as const;
+export const SIGNAL_NONE_COLOR = [0.3, 0.3, 0.38] as const;
+export const WIRE_DEFAULT_THICKNESS = 2.0;

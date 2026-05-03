@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "circuit-forge",
-        "width": 800,
-        "height": 600
+        "title": "CircuitForge",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "minWidth": 800,
+        "minHeight": 600
       }
     ],
     "security": {

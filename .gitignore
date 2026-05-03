@@ -31,6 +31,13 @@ desktop.ini
 .env.*.local
 *.local
 
+# Claude Code
+.claude/
+
+# Personal notes
+entities.json
+mempalace.yaml
+
 # Development design documents (developer-only, not for end users)
 docs/design/
 
