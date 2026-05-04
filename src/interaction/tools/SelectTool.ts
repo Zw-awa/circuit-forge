@@ -4,8 +4,11 @@ import { WebGLRenderer } from '../../renderer/WebGLRenderer';
 import { editorStore } from '../../stores/editorStore';
 import { historyStore } from '../../stores/historyStore';
 import { simulationStore } from '../../stores/simulationStore';
+import { useDebugStore } from '../../stores/debugStore';
 import { MoveComponentCmd } from '../../commands/MoveComponentCmd';
 import { toggleSwitch, pressButton, releaseButton } from '../../ipc/simulationIpc';
+import { addBreakpoint, removeBreakpoint } from '../../ipc/debugIpc';
+import type { Breakpoint } from '../../types/debug';
 
 export class SelectTool implements Tool {
   private picker: Picker;
@@ -37,6 +40,57 @@ export class SelectTool implements Tool {
 
   onPointerDown(e: CanvasPointerEvent): void {
     if (e.button === 2) {
+      const hitCompId = this.picker.hitTestComponent(e.worldX, e.worldY);
+      const state = editorStore.getState();
+
+      if (hitCompId !== null) {
+        const bps = useDebugStore.getState().breakpoints;
+        const existing = bps.find(
+          (bp) => 'Component' in bp.target && bp.target.Component === hitCompId,
+        );
+        if (existing) {
+          removeBreakpoint(existing.id);
+          useDebugStore.getState().removeBreakpoint(existing.id);
+        } else {
+          addBreakpoint({ Component: hitCompId }, 'SignalChanges').then((result) => {
+            const newBp: Breakpoint = {
+              id: result.id,
+              target: { Component: hitCompId },
+              condition: 'SignalChanges',
+              enabled: true,
+            };
+            useDebugStore.getState().addBreakpoint(newBp);
+          });
+        }
+        return;
+      }
+
+      const hitWireId = this.picker.hitTestWire(e.worldX, e.worldY);
+      if (hitWireId !== null) {
+        const wireObj = state.wires.get(hitWireId);
+        if (wireObj) {
+          const bps = useDebugStore.getState().breakpoints;
+          const existing = bps.find(
+            (bp) => 'Net' in bp.target && bp.target.Net === wireObj.netId,
+          );
+          if (existing) {
+            removeBreakpoint(existing.id);
+            useDebugStore.getState().removeBreakpoint(existing.id);
+          } else {
+            addBreakpoint({ Net: wireObj.netId }, 'SignalChanges').then((result) => {
+              const newBp: Breakpoint = {
+                id: result.id,
+                target: { Net: wireObj.netId },
+                condition: 'SignalChanges',
+                enabled: true,
+              };
+              useDebugStore.getState().addBreakpoint(newBp);
+            });
+          }
+        }
+        return;
+      }
+
       editorStore.getState().setActiveTool('select');
       return;
     }

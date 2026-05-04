@@ -4,10 +4,14 @@ import { TextureAtlas } from './TextureAtlas';
 import { ComponentLayer } from './ComponentLayer';
 import { SelectionLayer } from './SelectionLayer';
 import { WireLayer } from './WireLayer';
+import { BreakpointLayer } from './BreakpointLayer';
 import { editorStore } from '../stores/editorStore';
 import { simulationStore } from '../stores/simulationStore';
 import { useThemeStore } from '../stores/themeStore';
+import { useSkinStore } from '../stores/skinStore';
+import { useDebugStore } from '../stores/debugStore';
 import type { ComponentKind } from '../types/circuit';
+import type { GridPattern } from './GridLayer';
 
 function parseHexCSS(hex: string): [number, number, number] {
   const h = hex.trim();
@@ -40,12 +44,15 @@ export class WebGLRenderer {
   private componentLayer: ComponentLayer;
   private selectionLayer: SelectionLayer;
   private wireLayer: WireLayer;
+  private breakpointLayer: BreakpointLayer;
   private animFrameId: number | null = null;
   private running = false;
   private dirty = true;
   private unsubscribe: () => void;
   private simUnsubscribe: () => void;
   private themeUnsubscribe: () => void;
+  private skinUnsubscribe: () => void;
+  private debugUnsubscribe: () => void;
   private clearColor: [number, number, number] = [0.118, 0.118, 0.180];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -61,10 +68,13 @@ export class WebGLRenderer {
     this.componentLayer = new ComponentLayer(gl, this.textureAtlas);
     this.selectionLayer = new SelectionLayer(gl);
     this.wireLayer = new WireLayer(gl);
+    this.breakpointLayer = new BreakpointLayer(gl);
 
     this.unsubscribe = editorStore.subscribe(() => { this.dirty = true; });
     this.simUnsubscribe = simulationStore.subscribe(() => { this.dirty = true; });
     this.themeUnsubscribe = useThemeStore.subscribe(() => { this.updateThemeColors(); this.dirty = true; });
+    this.skinUnsubscribe = useSkinStore.subscribe(() => { this.onSkinChanged(); this.dirty = true; });
+    this.debugUnsubscribe = useDebugStore.subscribe(() => { this.dirty = true; });
     this.updateThemeColors();
   }
 
@@ -77,6 +87,31 @@ export class WebGLRenderer {
     this.clearColor = bg;
     this.gridLayer.setColors(bg, minor, major, axis);
     this.textureAtlas.regenerate(theme);
+  }
+
+  private onSkinChanged(): void {
+    const skin = useSkinStore.getState().activeSkin;
+    if (!skin) {
+      this.textureAtlas.clearSkin();
+      this.gridLayer.setPattern('Line');
+      return;
+    }
+    if (skin.grid_style?.pattern) {
+      this.gridLayer.setPattern(skin.grid_style.pattern as GridPattern);
+    }
+    const overrides = new Map<string, HTMLImageElement>();
+    const assets = useSkinStore.getState().skinAssets;
+    for (const [kind, assetKey] of Object.entries(skin.component_textures || {})) {
+      const base64 = assets[assetKey];
+      if (base64) {
+        const img = new Image();
+        img.src = `data:image/png;base64,${base64}`;
+        overrides.set(kind, img);
+      }
+    }
+    if (overrides.size > 0) {
+      this.textureAtlas.applySkin(overrides);
+    }
   }
 
   getCamera(): Camera {
@@ -155,6 +190,7 @@ export class WebGLRenderer {
     this.componentLayer.draw(this.camera);
     this.wireLayer.draw(this.camera);
     this.selectionLayer.draw(this.camera);
+    this.breakpointLayer.render(this.camera);
   }
 
   destroy(): void {
@@ -166,10 +202,14 @@ export class WebGLRenderer {
     this.unsubscribe();
     this.simUnsubscribe();
     this.themeUnsubscribe();
+    this.skinUnsubscribe();
+    this.debugUnsubscribe();
+    this.debugUnsubscribe();
     this.gridLayer.destroy();
     this.componentLayer.destroy();
     this.selectionLayer.destroy();
     this.wireLayer.destroy();
+    this.breakpointLayer.destroy();
     this.textureAtlas.destroy();
   }
 }

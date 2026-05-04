@@ -2,6 +2,7 @@ import { ShaderProgram } from './ShaderProgram';
 import { Camera } from './Camera';
 import { editorStore } from '../stores/editorStore';
 import { simulationStore } from '../stores/simulationStore';
+import { useSkinStore } from '../stores/skinStore';
 import { resolveWireEndpointPosition } from '../utils/wireEndpointResolver';
 import wireVertSource from './shaders/wire.vert.glsl?raw';
 import wireFragSource from './shaders/wire.frag.glsl?raw';
@@ -142,10 +143,23 @@ export class WireLayer {
       const b = (customColor & 0xFF) / 255;
       return [r, g, b];
     }
+    const skin = useSkinStore.getState().activeSkin;
     const signals = simulationStore.getState().signals;
     const signal = signals.get(netId);
-    if (signal === 'High') return [0.29, 0.87, 0.50];
-    if (signal === 'Low') return [0.42, 0.45, 0.51];
+    if (signal === 'High') {
+      if (skin?.wire_style?.high_color) {
+        const [hr, hg, hb] = skin.wire_style.high_color;
+        return [hr, hg, hb];
+      }
+      return [0.29, 0.87, 0.50];
+    }
+    if (signal === 'Low') {
+      if (skin?.wire_style?.low_color) {
+        const [lr, lg, lb] = skin.wire_style.low_color;
+        return [lr, lg, lb];
+      }
+      return [0.42, 0.45, 0.51];
+    }
     return [0.227, 0.227, 0.314];
   }
 
@@ -154,6 +168,8 @@ export class WireLayer {
     const wires = state.wires;
     const pins = state.pins;
     const junctions = state.junctions;
+    const skin = useSkinStore.getState().activeSkin;
+    const wireThickness = skin?.wire_style?.thickness ?? 2.0;
 
     this.wireInstances = [];
 
@@ -178,7 +194,7 @@ export class WireLayer {
           startY: seg.y1,
           endX: seg.x2,
           endY: seg.y2,
-          thickness: 2.0,
+          thickness: wireThickness,
           r,
           g,
           b,
@@ -199,9 +215,17 @@ export class WireLayer {
     this.buildWireInstances();
 
     const gl = this.gl;
+    const skin = useSkinStore.getState().activeSkin;
+    const dashLen = skin?.wire_style?.dash_length ?? 0.0;
+    const gapLen = skin?.wire_style?.gap_length ?? 0.0;
+    const glowIntensity = skin?.wire_style?.glow_intensity ?? 0.0;
+
     this.program.use();
     this.program.setUniformMatrix4fv('u_projection', camera.getProjectionMatrix());
     this.program.setUniform2f('u_resolution', camera.canvasWidth, camera.canvasHeight);
+    this.program.setUniform1f('u_dashLength', dashLen);
+    this.program.setUniform1f('u_gapLength', gapLen);
+    this.program.setUniform1f('u_glowIntensity', glowIntensity);
 
     gl.bindVertexArray(this.instanceVao);
 
@@ -237,9 +261,13 @@ export class WireLayer {
     if (junctions.size === 0) return;
 
     const gl = this.gl;
+    const skin = useSkinStore.getState().activeSkin;
     this.program.use();
     this.program.setUniformMatrix4fv('u_projection', camera.getProjectionMatrix());
     this.program.setUniform2f('u_resolution', camera.canvasWidth, camera.canvasHeight);
+    this.program.setUniform1f('u_dashLength', skin?.wire_style?.dash_length ?? 0.0);
+    this.program.setUniform1f('u_gapLength', skin?.wire_style?.gap_length ?? 0.0);
+    this.program.setUniform1f('u_glowIntensity', skin?.wire_style?.glow_intensity ?? 0.0);
 
     const junctionInstances: WireSegmentInstance[] = [];
     const signals = simulationStore.getState().signals;

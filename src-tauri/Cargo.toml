@@ -26,4 +26,6 @@ tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 mlua = { version = "0.11", features = ["lua54", "vendored", "serialize"] }
 chrono = { version = "0.4", features = ["serde"] }
+zip = "2.4"
+base64 = "0.22"
 

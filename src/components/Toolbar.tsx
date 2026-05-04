@@ -9,10 +9,13 @@ import { editorStore, useEditorStore } from '../stores/editorStore';
 import { historyStore, useHistoryStore } from '../stores/historyStore';
 import { simulationStore, useSimulationStore } from '../stores/simulationStore';
 import { useRuleStore } from '../stores/ruleStore';
+import { useSkinStore } from '../stores/skinStore';
 import { simStart, simPause, simStep, simReset, setSimSpeed, setSimMode, simStepN } from '../ipc/simulationIpc';
 import { SnapToGridCmd } from '../commands/SnapToGridCmd';
 import SubCircuitCreator from './SubCircuitCreator';
 import RuleEditor from './RuleEditor';
+import SkinManager from './SkinManager';
+import ExportDialog from './ExportDialog';
 
 const SPEEDS: Array<{ label: string; value: number }> = [
   { label: 'simulation.speed025x', value: 0.25 },
@@ -36,7 +39,7 @@ const WIRE_COLORS: Array<{ label: string; argb: number }> = [
   { label: 'White', argb: 0xFFECF0F1 },
 ];
 
-function Toolbar() {
+function Toolbar({ onToggleWaveform, waveformVisible }: { onToggleWaveform: () => void; waveformVisible: boolean }) {
   const { t } = useTranslation();
   const activeTool = useEditorStore((s) => s.activeTool);
   const setActiveTool = useEditorStore((s) => s.setActiveTool);
@@ -57,6 +60,10 @@ function Toolbar() {
   const [stepNInput, setStepNInput] = useState<string | null>(null);
   const [showEncapsulate, setShowEncapsulate] = useState(false);
   const [showRuleEditor, setShowRuleEditor] = useState(false);
+  const [showSkinManager, setShowSkinManager] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const activeSkin = useSkinStore((s) => s.activeSkin);
 
   const rulePacks = useRuleStore((s) => s.rulePacks);
   const activeRulePackId = useRuleStore((s) => s.activeRulePackId);
@@ -139,6 +146,7 @@ function Toolbar() {
             worldY: (owner ? owner.y : 0) + p.offsetY,
             offsetX: p.offsetX,
             offsetY: p.offsetY,
+            netId: p.net,
           };
         });
 
@@ -383,12 +391,75 @@ function Toolbar() {
       <div className="toolbar-divider" />
 
       <div className="toolbar-group">
-        <button onClick={handleSave} title={t('toolbar.save')}>
-          💾 {t('toolbar.save')}
+        <select
+          className="toolbar-select"
+          value={activeSkin?.id ?? '__default__'}
+          onChange={(e) => {
+            if (e.target.value === '__manage__') {
+              setShowSkinManager(true);
+            }
+          }}
+          title={t('skin.selectorTitle')}
+        >
+          <option value="__default__">{t('skin.defaultSkin')}</option>
+          {activeSkin && (
+            <option value={activeSkin.id}>{activeSkin.name}</option>
+          )}
+          <option value="__manage__">{t('skin.manage')}</option>
+        </select>
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group">
+        <button
+          className={waveformVisible ? 'active' : ''}
+          onClick={onToggleWaveform}
+          title="Waveform Viewer"
+        >
+          📊 Waveform
         </button>
-        <button onClick={handleLoad} title={t('toolbar.load')}>
-          📂 {t('toolbar.load')}
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group" style={{ position: 'relative' }}>
+        <button
+          onClick={() => setFileMenuOpen(!fileMenuOpen)}
+          title={t('export.fileMenu')}
+        >
+          📁 {t('export.fileMenu')}
         </button>
+        {fileMenuOpen && (
+          <div className="toolbar-speed-dropdown" style={{ left: 0 }}>
+            <button onClick={() => { handleSave(); setFileMenuOpen(false); }}>
+              {t('export.save')}
+            </button>
+            <button onClick={async () => {
+              setFileMenuOpen(false);
+              try {
+                const json = await saveProject();
+                const path = await save({
+                  filters: [{ name: 'CircuitForge Project', extensions: ['cfproj'] }],
+                });
+                if (path) await writeTextFile(path, json);
+              } catch (e) { console.error('Save As failed:', e); }
+            }}>
+              {t('export.saveAs')}
+            </button>
+            <button onClick={() => { handleLoad(); setFileMenuOpen(false); }}>
+              {t('export.open')}
+            </button>
+            <button onClick={() => { setShowExportDialog(true); setFileMenuOpen(false); }}>
+              {t('export.exportImport')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group">
         <button onClick={async () => {
           try {
             const json = await saveProject();
@@ -459,6 +530,14 @@ function Toolbar() {
 
     {showRuleEditor && (
       <RuleEditor onClose={() => setShowRuleEditor(false)} />
+    )}
+
+    {showSkinManager && (
+      <SkinManager onClose={() => setShowSkinManager(false)} />
+    )}
+
+    {showExportDialog && (
+      <ExportDialog onClose={() => setShowExportDialog(false)} />
     )}
     </>
   );

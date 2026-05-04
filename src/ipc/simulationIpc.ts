@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { WireEndpoint } from '../types/circuit';
+import type { SignalJson } from '../types/debug';
 import type { RulePack } from '../types/rules';
 
 // ---- Type definitions ----
@@ -31,6 +32,7 @@ export interface PinData {
   isOutput: boolean;
   offsetX: number;
   offsetY: number;
+  net?: number;
 }
 
 export interface ComponentData {
@@ -58,7 +60,7 @@ export interface LoadProjectResult {
 
 export interface SimTickPayload {
   tick: number;
-  changed: Record<string, string>;
+  changed: Record<string, SignalJson>;
 }
 
 // ---- Circuit editing commands ----
@@ -102,16 +104,16 @@ export async function setWireColor(wireId: number, color: number): Promise<void>
 
 // ---- Component interaction commands ----
 
-export async function pressButton(componentId: number): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("press_button", { componentId });
+export async function pressButton(componentId: number): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("press_button", { componentId });
 }
 
-export async function releaseButton(componentId: number): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("release_button", { componentId });
+export async function releaseButton(componentId: number): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("release_button", { componentId });
 }
 
-export async function setConstantValue(componentId: number, value: string): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("set_constant_value", { componentId, value });
+export async function setConstantValue(componentId: number, value: string): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("set_constant_value", { componentId, value });
 }
 
 export async function setComponentParam(componentId: number, param: string, value: number): Promise<void> {
@@ -120,12 +122,12 @@ export async function setComponentParam(componentId: number, param: string, valu
 
 // ---- Simulation control commands ----
 
-export async function toggleSwitch(componentId: number): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("toggle_switch", { componentId });
+export async function toggleSwitch(componentId: number): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("toggle_switch", { componentId });
 }
 
-export async function simStep(): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("sim_step");
+export async function simStep(): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("sim_step");
 }
 
 export async function simStart(): Promise<void> {
@@ -140,8 +142,8 @@ export async function simReset(): Promise<void> {
   return invoke("sim_reset");
 }
 
-export async function getSignals(): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("get_signals");
+export async function getSignals(): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("get_signals");
 }
 
 export async function setSimMode(mode: string): Promise<void> {
@@ -156,8 +158,8 @@ export async function setSimSpeed(multiplier: number): Promise<void> {
   return invoke("set_sim_speed", { multiplier });
 }
 
-export async function simStepN(n: number): Promise<Record<string, string>> {
-  return invoke<Record<string, string>>("sim_step_n", { n });
+export async function simStepN(n: number): Promise<Record<string, SignalJson>> {
+  return invoke<Record<string, SignalJson>>("sim_step_n", { n });
 }
 
 export async function getSignalHistory(netId: number): Promise<SignalHistoryEntry[]> {
@@ -200,4 +202,12 @@ export async function updateCustomRulePack(id: number, pack: Partial<RulePack>):
 
 export async function deleteCustomRulePack(id: number): Promise<void> {
   return invoke('delete_custom_rule_pack', { id });
+}
+
+export async function exportRulePack(rulePackId: number): Promise<string> {
+  return invoke<string>('export_rule_pack', { rulePackId });
+}
+
+export async function importRulePack(json: string): Promise<{ id: number; name: string }> {
+  return invoke<{ id: number; name: string }>('import_rule_pack', { json });
 }

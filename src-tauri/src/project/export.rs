@@ -4,6 +4,7 @@ use crate::circuit::subcircuit::{SubCircuitDef, SubCircuitDefRegistry};
 use crate::circuit::types::ComponentKind;
 use crate::scripting::lua_engine::{LuaComponentDef, LuaComponentDefRegistry};
 use crate::verification::truth_table::TruthTable;
+use crate::rules::presets::RulePack;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -203,4 +204,41 @@ pub fn import_cfcomp(
         }
         _ => Err("unknown component type".into()),
     }
+}
+
+pub fn export_rule_pack(pack: &RulePack) -> Result<String, String> {
+    let envelope = serde_json::json!({
+        "format": "cfrule",
+        "version": 1,
+        "metadata": {
+            "name": pack.name,
+            "description": pack.description,
+            "createdAt": chrono::Utc::now().to_rfc3339(),
+        },
+        "pack": pack,
+    });
+    serde_json::to_string_pretty(&envelope).map_err(|e| e.to_string())
+}
+
+pub fn import_rule_pack(json: &str) -> Result<RulePack, String> {
+    let envelope: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| format!("invalid .cfrule: {}", e))?;
+    let format = envelope.get("format")
+        .and_then(|v| v.as_str())
+        .ok_or("missing format field")?;
+    if format != "cfrule" {
+        return Err(format!("unsupported format: {}", format));
+    }
+    let version = envelope.get("version")
+        .and_then(|v| v.as_u64())
+        .ok_or("missing version field")?;
+    if version != 1 {
+        return Err(format!("unsupported version: {}", version));
+    }
+    let mut pack: RulePack = serde_json::from_value(
+        envelope.get("pack").ok_or("missing pack field")?.clone()
+    ).map_err(|e| format!("invalid pack data: {}", e))?;
+    pack.id = 0;
+    pack.is_preset = false;
+    Ok(pack)
 }

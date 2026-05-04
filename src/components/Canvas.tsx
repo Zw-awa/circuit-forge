@@ -5,6 +5,8 @@ import { ToolManager } from '../interaction/ToolManager';
 import { Picker } from '../interaction/Picker';
 import { listenSimTick } from '../ipc/simulationIpc';
 import { simulationStore } from '../stores/simulationStore';
+import { waveformStore } from '../stores/waveformStore';
+import { parseSignalJson } from '../ipc/debugIpc';
 
 function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,6 +35,15 @@ function Canvas() {
     const unlisten = listenSimTick((payload) => {
       simulationStore.getState().updateSignals(payload.changed);
       simulationStore.getState().incrementTick();
+      const tick = payload.tick;
+      const monitoredNets = waveformStore.getState().monitoredNets;
+      const signalSet = new Set(monitoredNets);
+      for (const [netIdStr, signal] of Object.entries(payload.changed)) {
+        const netId = parseInt(netIdStr, 10);
+        if (!isNaN(netId) && signalSet.has(netId)) {
+          waveformStore.getState().appendData(netId, tick, parseSignalJson(signal));
+        }
+      }
     });
 
     return () => {

@@ -5,6 +5,9 @@ mod commands;
 mod rules;
 mod scripting;
 mod verification;
+mod skin;
+mod packaging;
+mod debugging;
 
 use std::sync::{Arc, Mutex};
 use simulation::engine::SimulationEngine;
@@ -50,6 +53,8 @@ pub fn run() {
             commands::project_cmds::load_project,
             commands::project_cmds::export_custom_component,
             commands::project_cmds::import_custom_component,
+            commands::project_cmds::export_rule_pack,
+            commands::project_cmds::import_rule_pack,
             commands::custom_cmds::create_subcircuit_def,
             commands::custom_cmds::update_subcircuit_def,
             commands::custom_cmds::delete_subcircuit_def,
@@ -68,6 +73,26 @@ pub fn run() {
             commands::custom_cmds::delete_truth_table,
             commands::custom_cmds::get_truth_table,
             commands::custom_cmds::verify_truth_table_cmd,
+            commands::skin_cmds::load_skin_pack,
+            commands::skin_cmds::get_active_skin,
+            commands::skin_cmds::set_active_skin,
+            commands::skin_cmds::get_skin_asset,
+            commands::skin_cmds::clear_skin,
+            commands::skin_cmds::export_skin_pack,
+            commands::packaging_cmds::export_circuitforge,
+            commands::packaging_cmds::import_circuitforge,
+            commands::packaging_cmds::create_snapshot_cmd,
+            commands::packaging_cmds::list_snapshots,
+            commands::packaging_cmds::restore_snapshot,
+            commands::debug_cmds::add_breakpoint,
+            commands::debug_cmds::remove_breakpoint,
+            commands::debug_cmds::list_breakpoints,
+            commands::debug_cmds::set_breakpoint_enabled,
+            commands::debug_cmds::debug_step_into,
+            commands::debug_cmds::debug_step_over,
+            commands::debug_cmds::debug_continue,
+            commands::debug_cmds::get_bulk_signal_history,
+            commands::debug_cmds::export_waveform_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

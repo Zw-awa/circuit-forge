@@ -3,7 +3,10 @@ import { useState } from 'react';
 import { useEditorStore, editorStore } from '../stores/editorStore';
 import { useSimulationStore } from '../stores/simulationStore';
 import { useCustomComponentStore } from '../stores/customComponentStore';
+import { useDebugStore } from '../stores/debugStore';
 import { toggleSwitch, setComponentParam, pressButton, releaseButton, setConstantValue, setWireColor } from '../ipc/simulationIpc';
+import { addBreakpoint, removeBreakpoint } from '../ipc/debugIpc';
+import type { Breakpoint } from '../types/debug';
 import TruthTableEditor from './TruthTableEditor';
 
 const WIRE_COLORS: Array<{ label: string; argb: number }> = [
@@ -108,6 +111,42 @@ function PropertyPanel() {
             <span className="property-value">
               ({comp.x}, {comp.y})
             </span>
+          </div>
+
+          <div className="property-section">
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={async () => {
+                const bps = useDebugStore.getState().breakpoints;
+                const existing = bps.find(
+                  (bp) => 'Component' in bp.target && bp.target.Component === comp.id,
+                );
+                if (existing) {
+                  await removeBreakpoint(existing.id);
+                  useDebugStore.getState().removeBreakpoint(existing.id);
+                } else {
+                  const result = await addBreakpoint(
+                    { Component: comp.id },
+                    'SignalChanges',
+                  );
+                  const newBp: Breakpoint = {
+                    id: result.id,
+                    target: { Component: comp.id },
+                    condition: 'SignalChanges',
+                    enabled: true,
+                  };
+                  useDebugStore.getState().addBreakpoint(newBp);
+                }
+              }}
+            >
+              {(() => {
+                const bps = useDebugStore.getState().breakpoints;
+                const existing = bps.find(
+                  (bp) => 'Component' in bp.target && bp.target.Component === comp.id,
+                );
+                return existing ? t('debug.removeBreakpoint') : t('debug.addBreakpoint');
+              })()}
+            </button>
           </div>
 
           {inputPinsData.length > 0 && (
@@ -371,6 +410,41 @@ function PropertyPanel() {
           <div className="property-row">
             <span className="property-label">{t('panel.signal')}</span>
             <span className="property-value">{signalText}</span>
+          </div>
+          <div className="property-section">
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={async () => {
+                const bps = useDebugStore.getState().breakpoints;
+                const existing = bps.find(
+                  (bp) => 'Net' in bp.target && bp.target.Net === wire.netId,
+                );
+                if (existing) {
+                  await removeBreakpoint(existing.id);
+                  useDebugStore.getState().removeBreakpoint(existing.id);
+                } else {
+                  const result = await addBreakpoint(
+                    { Net: wire.netId },
+                    'SignalChanges',
+                  );
+                  const newBp: Breakpoint = {
+                    id: result.id,
+                    target: { Net: wire.netId },
+                    condition: 'SignalChanges',
+                    enabled: true,
+                  };
+                  useDebugStore.getState().addBreakpoint(newBp);
+                }
+              }}
+            >
+              {(() => {
+                const bps = useDebugStore.getState().breakpoints;
+                const existing = bps.find(
+                  (bp) => 'Net' in bp.target && bp.target.Net === wire.netId,
+                );
+                return existing ? t('debug.removeBreakpoint') : t('debug.addBreakpoint');
+              })()}
+            </button>
           </div>
           <div className="property-section">
             <div className="property-section-title">{t('wire.color')}</div>

@@ -3,6 +3,8 @@ import { ShaderProgram } from './ShaderProgram';
 import gridVertSource from './shaders/grid.vert.glsl?raw';
 import gridFragSource from './shaders/grid.frag.glsl?raw';
 
+export type GridPattern = 'Line' | 'Dot' | 'Cross';
+
 export class GridLayer {
   private gl: WebGL2RenderingContext;
   private program: ShaderProgram;
@@ -13,6 +15,7 @@ export class GridLayer {
   private minorColor: [number, number, number] = [0.2, 0.2, 0.28];
   private majorColor: [number, number, number] = [0.25, 0.25, 0.35];
   private axisColor: [number, number, number] = [0.35, 0.35, 0.5];
+  private gridPattern: number = 0; // 0=Line, 1=Dot, 2=Cross
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -41,6 +44,14 @@ export class GridLayer {
     this.opacity = opacity;
   }
 
+  setPattern(pattern: GridPattern): void {
+    switch (pattern) {
+      case 'Dot': this.gridPattern = 1; break;
+      case 'Cross': this.gridPattern = 2; break;
+      default: this.gridPattern = 0; break;
+    }
+  }
+
   setColors(
     bgColor: [number, number, number],
     minorColor: [number, number, number],
@@ -63,6 +74,7 @@ export class GridLayer {
     this.program.setUniform3f('u_minorColor', this.minorColor[0], this.minorColor[1], this.minorColor[2]);
     this.program.setUniform3f('u_majorColor', this.majorColor[0], this.majorColor[1], this.majorColor[2]);
     this.program.setUniform3f('u_axisColor', this.axisColor[0], this.axisColor[1], this.axisColor[2]);
+    this.program.setUniform1i('u_gridPattern', this.gridPattern);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);

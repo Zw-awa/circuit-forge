@@ -5,8 +5,25 @@ use crate::circuit::types::Signal;
 use crate::circuit::types::SimMode;
 use crate::rules::presets::RulePack;
 use crate::simulation::engine::{SimStatus, SimEvent};
+use crate::debugging::breakpoint::BreakpointHitInfo;
 
-fn signal_to_json_value(signal: &Signal) -> serde_json::Value {
+fn propagate_result_to_json(changed: &HashMap<u32, Signal>, bp_hit: &Option<BreakpointHitInfo>) -> serde_json::Value {
+    let mut result = signals_to_json(changed);
+    if let Some(hit) = bp_hit {
+        if let serde_json::Value::Object(ref mut map) = result {
+            map.insert("breakpointHit".into(), serde_json::json!({
+                "breakpointId": hit.breakpoint_id,
+                "netId": hit.net_id,
+                "oldSignal": signal_to_json_value(&hit.old_signal),
+                "newSignal": signal_to_json_value(&hit.new_signal),
+                "tick": hit.tick,
+            }));
+        }
+    }
+    result
+}
+
+pub fn signal_to_json_value(signal: &Signal) -> serde_json::Value {
     match signal {
         Signal::High => serde_json::json!("High"),
         Signal::Low => serde_json::json!("Low"),
@@ -39,8 +56,8 @@ pub fn sim_step(
     engine: State<'_, EngineState>,
 ) -> Result<serde_json::Value, String> {
     let mut eng = engine.lock().map_err(|e| e.to_string())?;
-    let changed = eng.step();
-    Ok(signals_to_json(&changed))
+    let (changed, bp_hit) = eng.step();
+    Ok(propagate_result_to_json(&changed, &bp_hit))
 }
 
 #[tauri::command]
@@ -63,7 +80,7 @@ pub fn sim_start(
             break;
         }
 
-        let changed = match eng.sim_mode {
+        let (changed, bp_hit) = match eng.sim_mode {
             SimMode::TickDriven => {
                 eng.tick_driven_step()
             }
@@ -100,6 +117,18 @@ pub fn sim_start(
                 }),
             );
         }
+
+        if let Some(hit) = bp_hit {
+            let hit_json = serde_json::json!({
+                "breakpointId": hit.breakpoint_id,
+                "netId": hit.net_id,
+                "oldSignal": signal_to_json_value(&hit.old_signal),
+                "newSignal": signal_to_json_value(&hit.new_signal),
+            });
+            let _ = app.emit("breakpoint-hit", hit_json);
+            break;
+        }
+
         std::thread::sleep(std::time::Duration::from_millis(interval_ms));
     });
     Ok(())
@@ -155,8 +184,8 @@ pub fn press_button(
             }
         }
     }
-    let changed = eng.propagate();
-    Ok(signals_to_json(&changed))
+    let (changed, bp_hit) = eng.propagate();
+    Ok(propagate_result_to_json(&changed, &bp_hit))
 }
 
 #[tauri::command]
@@ -182,8 +211,8 @@ pub fn release_button(
             }
         }
     }
-    let changed = eng.propagate();
-    Ok(signals_to_json(&changed))
+    let (changed, bp_hit) = eng.propagate();
+    Ok(propagate_result_to_json(&changed, &bp_hit))
 }
 
 #[tauri::command]
@@ -221,8 +250,8 @@ pub fn set_constant_value(
             }
         }
     }
-    let changed = eng.propagate();
-    Ok(signals_to_json(&changed))
+    let (changed, bp_hit) = eng.propagate();
+    Ok(propagate_result_to_json(&changed, &bp_hit))
 }
 
 #[tauri::command]
@@ -302,11 +331,16 @@ pub fn sim_step_n(
 ) -> Result<serde_json::Value, String> {
     let mut eng = engine.lock().map_err(|e| e.to_string())?;
     let mut all_changed: HashMap<u32, Signal> = HashMap::new();
+    let mut last_bp_hit: Option<BreakpointHitInfo> = None;
     for _ in 0..n {
-        let changed = eng.step();
+        let (changed, bp_hit) = eng.step();
         all_changed.extend(changed);
+        if bp_hit.is_some() {
+            last_bp_hit = bp_hit;
+            break;
+        }
     }
-    Ok(signals_to_json(&all_changed))
+    Ok(propagate_result_to_json(&all_changed, &last_bp_hit))
 }
 
 #[tauri::command]

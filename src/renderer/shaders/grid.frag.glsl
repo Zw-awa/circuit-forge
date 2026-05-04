@@ -9,6 +9,7 @@ uniform vec3 u_bgColor;
 uniform vec3 u_minorColor;
 uniform vec3 u_majorColor;
 uniform vec3 u_axisColor;
+uniform int u_gridPattern;
 void main() {
   vec4 worldPos = u_invProjection * vec4(v_clipPos, 0.0, 1.0);
   vec2 world = worldPos.xy;
@@ -25,8 +26,25 @@ void main() {
   float axisLine = min(abs(world.x) * u_zoom, abs(world.y) * u_zoom);
   float axisAlpha = 1.0 - smoothstep(0.0, 2.0, axisLine);
   vec3 color = u_bgColor;
-  color = mix(color, u_minorColor, minorAlpha * 0.5 * u_gridOpacity);
-  color = mix(color, u_majorColor, majorAlpha * 0.7 * u_gridOpacity);
+
+  if (u_gridPattern == 1) {
+    // Dot pattern: show dots at grid intersections
+    float dotMask = (1.0 - smoothstep(1.5, 3.0, minorLine * 2.0)) * minorFade;
+    color = mix(color, u_minorColor, dotMask * 0.6 * u_gridOpacity);
+    color = mix(color, u_majorColor, majorAlpha * 0.8 * u_gridOpacity);
+  } else if (u_gridPattern == 2) {
+    // Cross pattern: show short cross segments at intersections
+    float crossX = 1.0 - smoothstep(0.0, 1.5, pixelDist.x);
+    float crossY = 1.0 - smoothstep(0.0, 1.5, pixelDist.y);
+    float crossMask = min(crossX, crossY) * minorFade;
+    color = mix(color, u_minorColor, crossMask * 0.5 * u_gridOpacity);
+    color = mix(color, u_majorColor, majorAlpha * 0.7 * u_gridOpacity);
+  } else {
+    // Line pattern (default)
+    color = mix(color, u_minorColor, minorAlpha * 0.5 * u_gridOpacity);
+    color = mix(color, u_majorColor, majorAlpha * 0.7 * u_gridOpacity);
+  }
+
   color = mix(color, u_axisColor, axisAlpha * 0.8 * u_gridOpacity);
   fragColor = vec4(color, 1.0);
 }

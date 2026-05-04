@@ -167,3 +167,16 @@ export async function verifyTruthTable(
 ): Promise<VerificationResult> {
   return invoke('verify_truth_table_cmd', { targetDefId, targetType });
 }
+
+export async function exportCustomComponent(
+  defId: number,
+  componentType: string
+): Promise<string> {
+  return invoke<string>('export_custom_component', { defId, componentType });
+}
+
+export async function importCustomComponent(
+  json: string
+): Promise<{ id: number; component_type: string; name: string }> {
+  return invoke('import_custom_component', { json });
+}

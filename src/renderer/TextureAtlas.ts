@@ -213,9 +213,11 @@ export class TextureAtlas {
   private uvMap: Record<string, { u0: number; v0: number; u1: number; v1: number }>;
   private subTextures: Map<number, HTMLCanvasElement> = new Map();
   private nextSubSlot = 16;
+  private currentTheme: 'dark' | 'light';
 
   constructor(gl: WebGL2RenderingContext, theme: 'dark' | 'light' = 'dark') {
     this.gl = gl;
+    this.currentTheme = theme;
     this.texture = this.createTexture(theme);
     this.uvMap = this.buildUVMap();
   }
@@ -243,6 +245,7 @@ export class TextureAtlas {
   }
 
   regenerate(theme: 'dark' | 'light'): void {
+    this.currentTheme = theme;
     this.gl.deleteTexture(this.texture);
     this.texture = this.createTexture(theme);
   }
@@ -307,6 +310,23 @@ export class TextureAtlas {
       return { u0: 0, v0: 0, u1: 1, v1: 1 };
     }
     return uv;
+  }
+
+  applySkin(overrides: Map<string, HTMLImageElement>): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    for (const [kind, img] of overrides) {
+      const uv = this.uvMap[kind];
+      if (!uv) continue;
+      const slotX = Math.round(uv.u0 * 1024);
+      const slotY = 0;
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, slotX, slotY, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
+  clearSkin(): void {
+    this.regenerate(this.currentTheme);
   }
 
   bind(gl: WebGL2RenderingContext, unit: number): void {

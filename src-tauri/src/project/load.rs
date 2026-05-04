@@ -9,6 +9,7 @@ use crate::scripting::lua_engine::LuaComponentDef;
 use crate::rules::presets::RulePack;
 use crate::verification::truth_table::TruthTable;
 use crate::simulation::engine::SimulationEngine;
+use crate::debugging::breakpoint::Breakpoint;
 
 #[derive(Deserialize)]
 struct LoadData {
@@ -43,6 +44,8 @@ struct LoadData {
     lua_registry_next_id: Option<u32>,
     #[serde(default)]
     rule_registry_next_id: Option<u32>,
+    #[serde(default)]
+    breakpoints: Vec<Breakpoint>,
 }
 
 pub fn load_project(engine: &mut SimulationEngine, json: &str) -> Result<(), String> {
@@ -127,6 +130,8 @@ pub fn load_project(engine: &mut SimulationEngine, json: &str) -> Result<(), Str
         let max_id = engine.rule_registry.packs.keys().max().copied().unwrap_or(0);
         engine.rule_registry.next_id = nid.max(max_id + 1);
     }
+
+    engine.breakpoint_manager.restore_from_save(data.breakpoints, &engine.graph);
 
     Ok(())
 }

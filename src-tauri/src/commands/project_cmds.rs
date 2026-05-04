@@ -60,3 +60,29 @@ pub fn import_custom_component(
         "name": name,
     }))
 }
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn export_rule_pack(
+    engine: State<'_, EngineState>,
+    rule_pack_id: u32,
+) -> Result<String, String> {
+    let eng = engine.lock().map_err(|e| e.to_string())?;
+    let pack = eng.rule_registry.packs.get(&rule_pack_id)
+        .ok_or("rule pack not found")?;
+    project::export::export_rule_pack(pack)
+}
+
+#[tauri::command]
+pub fn import_rule_pack(
+    engine: State<'_, EngineState>,
+    json: String,
+) -> Result<serde_json::Value, String> {
+    let mut eng = engine.lock().map_err(|e| e.to_string())?;
+    let pack = project::export::import_rule_pack(&json)?;
+    let name = pack.name.clone();
+    let new_id = eng.rule_registry.add_custom(pack);
+    Ok(serde_json::json!({
+        "id": new_id,
+        "name": name,
+    }))
+}

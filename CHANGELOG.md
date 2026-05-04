@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added (Phase 4 — 皮肤与导出 + 调试工具)
+- **皮肤/素材系统**: 支持 .cfskin 格式的元件贴图替换、连线样式虚线/发光、网格点阵/十字模式
+- **.circuitforge 打包**: zip 格式完整项目导出/导入，含电路、自定义元件、规则包、皮肤
+- **分类导出**: .cfrule 规则包独立导出/导入，统一导出对话框（项目/皮肤/元件/规则）
+- **断点调试**: 连线和元件断点，条件触发（SignalEquals/RisingEdge/FallingEdge），Step Into/Step Over/Continue
+- **波形查看器**: Canvas 2D 波形面板，多信号监控，时间轴缩放，游标，CSV 导出
+- 新增 Rust 模块: `skin/`, `packaging/`, `debugging/`
+- 新增依赖: `zip 2.6`, `base64 0.22`
+
 ### Added
 
 **Phase 3 — Encapsulation & Rules**

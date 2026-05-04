@@ -9,10 +9,19 @@ use crate::circuit::component::Component;
 use crate::rules::presets::RulePackRegistry;
 use crate::scripting::lua_engine::LuaComponentDefRegistry;
 use crate::verification::truth_table::TruthTable;
+use crate::skin::types::SkinManifest;
+use crate::debugging::breakpoint::{BreakpointManager, BreakpointHitInfo};
 use super::evaluator::evaluate_gate;
 use super::tick_engine::TickEngine;
 
-const MAX_HISTORY_LENGTH: usize = 1024;
+const MAX_HISTORY_LENGTH: usize = 8192;
+
+#[derive(Clone, Serialize)]
+pub struct StepResult {
+    pub changed: HashMap<NetId, Signal>,
+    pub breakpoint_hit: Option<BreakpointHitInfo>,
+    pub events_remaining: usize,
+}
 
 #[derive(Clone)]
 pub struct SignalHistory {
@@ -71,6 +80,11 @@ pub struct SimulationEngine {
     pub subcircuit_registry: SubCircuitDefRegistry,
     pub lua_registry: LuaComponentDefRegistry,
     pub truth_tables: HashMap<u32, TruthTable>,
+    pub active_skin: Option<SkinManifest>,
+    pub skin_assets: HashMap<String, Vec<u8>>,
+    pub snapshots: Vec<(u32, String, String, String)>,
+    pub next_snapshot_id: u32,
+    pub breakpoint_manager: BreakpointManager,
     delayed_events: Vec<DelayedEvent>,
     next_truth_table_id: u32,
 }
@@ -94,6 +108,11 @@ impl SimulationEngine {
             subcircuit_registry: SubCircuitDefRegistry::new(),
             lua_registry: LuaComponentDefRegistry::new(),
             truth_tables: HashMap::new(),
+            active_skin: None,
+            skin_assets: HashMap::new(),
+            snapshots: Vec::new(),
+            next_snapshot_id: 1,
+            breakpoint_manager: BreakpointManager::new(),
             delayed_events: Vec::new(),
             next_truth_table_id: 1,
         }
@@ -105,7 +124,7 @@ impl SimulationEngine {
         id
     }
 
-    pub fn propagate(&mut self) -> HashMap<NetId, Signal> {
+    pub fn propagate(&mut self) -> (HashMap<NetId, Signal>, Option<BreakpointHitInfo>) {
         self.process_delayed_events();
         let mut changed: HashMap<NetId, Signal> = HashMap::new();
         let mut iterations = 0;
@@ -131,6 +150,12 @@ impl SimulationEngine {
 
             self.record_signal_history(event.net_id, signal);
 
+            if let Some(mut hit) = self.breakpoint_manager.check(event.net_id, old, signal) {
+                self.status = SimStatus::Paused;
+                hit.tick = self.tick_count;
+                return (changed, Some(hit));
+            }
+
             if let Some(pin_ids) = self.graph.nets.get(&event.net_id) {
                 let pin_ids: Vec<_> = pin_ids.clone();
                 for pin_id in pin_ids {
@@ -144,7 +169,48 @@ impl SimulationEngine {
         }
 
         self.tick_count += 1;
-        changed
+        (changed, None)
+    }
+
+    pub fn step_single_event(&mut self) -> Result<StepResult, String> {
+        if let Some(event) = self.event_queue.pop_front() {
+            let old = self.signals.get(&event.net_id).copied().unwrap_or(Signal::Low);
+            let signal = self.apply_attenuation(event.new_signal);
+            if old != signal {
+                self.signals.insert(event.net_id, signal);
+                self.record_signal_history(event.net_id, signal);
+                if let Some(pin_ids) = self.graph.nets.get(&event.net_id).cloned() {
+                    for pin_id in pin_ids {
+                        if let Some(pin) = self.graph.pins.get(&pin_id) {
+                            if !pin.is_output {
+                                self.evaluate_component(pin.owner, 0);
+                            }
+                        }
+                    }
+                }
+                let mut bp_hit = self.breakpoint_manager.check(event.net_id, old, signal);
+                if let Some(ref mut hit) = bp_hit {
+                    hit.tick = self.tick_count;
+                    self.status = SimStatus::Paused;
+                }
+                let mut changed = HashMap::new();
+                changed.insert(event.net_id, signal);
+                return Ok(StepResult {
+                    changed,
+                    breakpoint_hit: bp_hit,
+                    events_remaining: self.event_queue.len(),
+                });
+            }
+        }
+        Ok(StepResult {
+            changed: HashMap::new(),
+            breakpoint_hit: None,
+            events_remaining: 0,
+        })
+    }
+
+    pub fn debug_continue(&mut self) {
+        self.status = SimStatus::Running;
     }
 
     fn evaluate_component(&mut self, comp_id: ComponentId, depth: u32) {
@@ -616,10 +682,11 @@ impl SimulationEngine {
                 }
             }
         }
-        Ok(self.propagate())
+        let (changed, _) = self.propagate();
+        Ok(changed)
     }
 
-    pub fn step(&mut self) -> HashMap<NetId, Signal> {
+    pub fn step(&mut self) -> (HashMap<NetId, Signal>, Option<BreakpointHitInfo>) {
         match self.sim_mode {
             SimMode::EventDriven => {
                 self.advance_clocks();
@@ -673,6 +740,50 @@ impl SimulationEngine {
             .entry(net_id)
             .or_insert_with(|| SignalHistory::new(net_id))
             .record(self.tick_count, signal);
+    }
+
+    pub fn get_bulk_signal_history(&self, net_ids: &[NetId], from_tick: Option<u64>, to_tick: Option<u64>) -> HashMap<NetId, Vec<(u64, Signal)>> {
+        let mut result = HashMap::new();
+        for &net_id in net_ids {
+            if let Some(history) = self.signal_history.get(&net_id) {
+                let data: Vec<(u64, Signal)> = history.data.iter()
+                    .filter(|(tick, _)| {
+                        if let Some(from) = from_tick { if *tick < from { return false; } }
+                        if let Some(to) = to_tick { if *tick > to { return false; } }
+                        true
+                    })
+                    .cloned()
+                    .collect();
+                result.insert(net_id, data);
+            }
+        }
+        result
+    }
+
+    pub fn export_waveform_csv(&self, net_ids: &[NetId]) -> Result<String, String> {
+        use std::collections::BTreeSet;
+        let mut all_ticks = BTreeSet::new();
+        let histories = self.get_bulk_signal_history(net_ids, None, None);
+        for data in histories.values() {
+            for (tick, _) in data { all_ticks.insert(*tick); }
+        }
+        let net_list: Vec<NetId> = net_ids.to_vec();
+        let mut csv = format!("tick,{}\n", net_list.iter().map(|n| format!("net_{}", n)).collect::<Vec<_>>().join(","));
+        for tick in all_ticks {
+            let mut row = format!("{}", tick);
+            for net_id in &net_list {
+                let val = histories.get(net_id)
+                    .and_then(|data| data.iter().rev().find(|(t, _)| *t <= tick))
+                    .map(|(_, s)| match s {
+                        Signal::Float(v) => format!("{}", v),
+                        _ => s.to_integer().to_string(),
+                    })
+                    .unwrap_or_else(|| "0".to_string());
+                row.push_str(&format!(",{}", val));
+            }
+            csv.push_str(&row); csv.push('\n');
+        }
+        Ok(csv)
     }
 
     pub fn advance_clocks(&mut self) {
@@ -729,11 +840,20 @@ impl SimulationEngine {
         }
     }
 
-    pub fn tick_driven_step(&mut self) -> HashMap<NetId, Signal> {
+    pub fn tick_driven_step(&mut self) -> (HashMap<NetId, Signal>, Option<BreakpointHitInfo>) {
         let changed = self.tick_engine.tick(&self.graph, &self.rule_registry.active().signal_type);
         self.tick_count += 1;
-        self.signals = self.tick_engine.current_signals.clone();
-        changed
+        let old_signals = std::mem::replace(&mut self.signals, self.tick_engine.current_signals.clone());
+        for (&net_id, &new_signal) in &changed {
+            let old_signal = old_signals.get(&net_id).copied().unwrap_or(Signal::Low);
+            self.record_signal_history(net_id, new_signal);
+            if let Some(mut hit) = self.breakpoint_manager.check(net_id, old_signal, new_signal) {
+                hit.tick = self.tick_count;
+                self.status = SimStatus::Paused;
+                return (changed, Some(hit));
+            }
+        }
+        (changed, None)
     }
 
     pub fn advance_delay_lines(&mut self) {

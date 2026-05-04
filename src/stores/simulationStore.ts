@@ -1,6 +1,16 @@
 import { create } from 'zustand';
+import type { SignalJson } from '../types/debug';
 import type { Signal } from '../types/circuit';
+
+const signalFromJson = (s: SignalJson): Signal => {
+  if (typeof s === 'string') return s as Signal;
+  if ('Bus' in s) return 'Bus' as Signal;
+  if ('Integer' in s) return 'Integer' as Signal;
+  return 'Float' as Signal;
+};
 import type { SimStatus, SimMode } from '../types/simulation';
+import { listenBreakpointHit } from '../ipc/debugIpc';
+import { debugStore } from './debugStore';
 
 interface SimulationState {
   signals: Map<number, Signal>;
@@ -10,7 +20,7 @@ interface SimulationState {
   tickRate: number;
   speedMultiplier: number;
 
-  updateSignals: (changed: Record<string, string>) => void;
+  updateSignals: (changed: Record<string, SignalJson>) => void;
   setAllSignals: (signals: Map<number, Signal>) => void;
   setStatus: (status: SimStatus) => void;
   incrementTick: () => void;
@@ -34,7 +44,7 @@ const simulationStore = create<SimulationState>()((set) => ({
       for (const [netIdStr, signal] of Object.entries(changed)) {
         const netId = parseInt(netIdStr, 10);
         if (!isNaN(netId)) {
-          next.set(netId, signal as Signal);
+          next.set(netId, signalFromJson(signal as SignalJson));
         }
       }
       return { signals: next };
@@ -57,3 +67,8 @@ const simulationStore = create<SimulationState>()((set) => ({
 
 export const useSimulationStore = simulationStore;
 export { simulationStore };
+
+listenBreakpointHit((payload) => {
+  debugStore.getState().setActiveBreakpointHit(payload);
+  debugStore.getState().setIsDebugging(true);
+});

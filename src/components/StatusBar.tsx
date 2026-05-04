@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../stores/editorStore';
 import { useSimulationStore } from '../stores/simulationStore';
 import { useThemeStore } from '../stores/themeStore';
+import { useDebugStore } from '../stores/debugStore';
 
 function StatusBar() {
   const { t, i18n } = useTranslation();
@@ -14,6 +15,7 @@ function StatusBar() {
   const speedMultiplier = useSimulationStore((s) => s.speedMultiplier);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const isDebugging = useDebugStore((s) => s.isDebugging);
 
   const zoomPercent = Math.round(zoom / 40 * 100);
   const isZh = i18n.language === 'zh-CN';
@@ -35,6 +37,11 @@ function StatusBar() {
       <div className="status-item">
         {t('statusBar.tick')}: {tickCount} | {t(`simulation.${status}`)}
       </div>
+      {isDebugging && (
+        <div className="status-item debug-indicator">
+          {status === 'paused' ? t('statusBar.debugPaused') : t('statusBar.debugRunning')}
+        </div>
+      )}
       <button
         className="theme-toggle"
         onClick={toggleTheme}

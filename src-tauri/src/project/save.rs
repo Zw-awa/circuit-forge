@@ -8,6 +8,7 @@ use crate::scripting::lua_engine::LuaComponentDef;
 use crate::rules::presets::RulePack;
 use crate::verification::truth_table::TruthTable;
 use crate::simulation::engine::SimulationEngine;
+use crate::debugging::breakpoint::Breakpoint;
 
 #[derive(Serialize, Deserialize)]
 struct SaveData {
@@ -30,6 +31,8 @@ struct SaveData {
     subcircuit_registry_next_id: u32,
     lua_registry_next_id: u32,
     rule_registry_next_id: u32,
+    #[serde(default)]
+    breakpoints: Vec<Breakpoint>,
 }
 
 pub fn save_project(engine: &SimulationEngine) -> Result<String, String> {
@@ -57,6 +60,7 @@ pub fn save_project(engine: &SimulationEngine) -> Result<String, String> {
         subcircuit_registry_next_id: engine.subcircuit_registry.next_id,
         lua_registry_next_id: engine.lua_registry.next_id,
         rule_registry_next_id: engine.rule_registry.next_id,
+        breakpoints: engine.breakpoint_manager.breakpoints.values().cloned().collect(),
     };
     serde_json::to_string(&data).map_err(|e| e.to_string())
 }
