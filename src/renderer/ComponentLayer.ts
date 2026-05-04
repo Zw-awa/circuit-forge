@@ -53,6 +53,7 @@ export class ComponentLayer {
   private pinInstances: PinInstance[] = [];
   private ghostComponent: ComponentInstance | null = null;
   private atlas: TextureAtlas;
+  private instancesDirty = true;
 
   constructor(gl: WebGL2RenderingContext, atlas: TextureAtlas) {
     this.gl = gl;
@@ -192,6 +193,9 @@ export class ComponentLayer {
   }
 
   updateInstances(components: Map<number, CircuitComponent>, pins: Map<number, Pin>): void {
+    if (!this.instancesDirty) return;
+    this.instancesDirty = false;
+
     const signals = simulationStore.getState().signals;
 
     this.componentInstances = [];
@@ -386,6 +390,10 @@ export class ComponentLayer {
 
   clearGhostComponent(): void {
     this.ghostComponent = null;
+  }
+
+  markDirty(): void {
+    this.instancesDirty = true;
   }
 
   private uploadGhostInstance(): void {

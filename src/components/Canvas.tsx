@@ -21,6 +21,7 @@ function Canvas() {
     renderer.start();
 
     const picker = new Picker();
+    (window as any).__pickerMarkSpatialHashDirty = () => picker.markSpatialHashDirty();
     const toolManager = new ToolManager(picker, renderer);
     const inputManager = new InputManager(canvas, renderer.getCamera(), toolManager);
 

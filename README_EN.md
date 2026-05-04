@@ -177,7 +177,7 @@ If you discover a security vulnerability, please report it privately via [GitHub
 - [x] **Phase 2** — Core experience: all components, bus wiring, free-drag mode, tick-driven simulation, themes
 - [x] **Phase 3** — Encapsulation & rules: sub-circuit packaging, Lua scripting, rule editor, truth table verification
 - [ ] **Phase 4** — Skins & export: skin system, Verilog export, debug tools
-- [ ] **Phase 5** — Community & plugins: workshop, plugin system, performance optimization
+- [x] **Phase 5** — Community & plugins: workshop, plugin system, performance optimization
 
 ## Contributing
 

@@ -9,7 +9,48 @@ pub fn add_component(
     kind: String,
     x: f32,
     y: f32,
+    plugin_id: Option<String>,
+    plugin_kind_name: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let mut eng = engine.lock().map_err(|e| e.to_string())?;
+
+    if kind == "Plugin" {
+        let pid = plugin_id.ok_or("plugin_id required for Plugin kind")?;
+        let kname = plugin_kind_name.ok_or("plugin_kind_name required for Plugin kind")?;
+
+        let registration = eng.plugin_manager
+            .get(&pid)
+            .and_then(|p| p.registered_components.iter().find(|r| r.kind_name == kname))
+            .ok_or(format!("plugin component not found: {}/{}", pid, kname))?;
+
+        let input_offsets: Vec<(f32, f32)> = registration.input_pins.iter()
+            .map(|p| (p.offset_x, p.offset_y))
+            .collect();
+        let output_offsets: Vec<(f32, f32)> = registration.output_pins.iter()
+            .map(|p| (p.offset_x, p.offset_y))
+            .collect();
+
+        let (comp_id, input_pins, output_pins) = eng.graph.add_plugin_component(
+            &pid,
+            &kname,
+            input_offsets,
+            output_offsets,
+            x,
+            y,
+        )?;
+
+        let to_pin_json = |pid: &u32| {
+            let pin = &eng.graph.pins[pid];
+            serde_json::json!({ "id": pin.id, "offsetX": pin.offset_x, "offsetY": pin.offset_y })
+        };
+
+        return Ok(serde_json::json!({
+            "componentId": comp_id,
+            "inputPins": input_pins.iter().map(to_pin_json).collect::<Vec<_>>(),
+            "outputPins": output_pins.iter().map(to_pin_json).collect::<Vec<_>>(),
+        }));
+    }
+
     let kind = match kind.as_str() {
         "And" => ComponentKind::And,
         "Or" => ComponentKind::Or,
@@ -30,7 +71,6 @@ pub fn add_component(
         _ => return Err(format!("unknown component kind: {}", kind)),
     };
 
-    let mut eng = engine.lock().map_err(|e| e.to_string())?;
     let (comp_id, input_pins, output_pins) = eng.graph.add_component(kind, x, y)?;
 
     let to_pin_json = |pid: &u32| {

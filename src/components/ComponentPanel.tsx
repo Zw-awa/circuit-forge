@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../stores/editorStore';
 import { useCustomComponentStore } from '../stores/customComponentStore';
+import { usePluginStore } from '../stores/pluginStore';
 import type { ComponentKind } from '../types/circuit';
 import LuaScriptEditor from './LuaScriptEditor';
 
@@ -36,25 +37,43 @@ function ComponentPanel() {
   const subCircuitDefs = useCustomComponentStore((s) => s.subCircuitDefs);
   const loadSubCircuitDefs = useCustomComponentStore((s) => s.loadSubCircuitDefs);
 
+  const pluginComponents = usePluginStore((s) => s.pluginComponents);
+  const plugins = usePluginStore((s) => s.plugins);
+  const loadPlugins = usePluginStore((s) => s.loadPlugins);
+  const activePluginId = useEditorStore((s) => s.activePluginId);
+  const activePluginKindName = useEditorStore((s) => s.activePluginKindName);
+  const setActivePlugin = useEditorStore((s) => s.setActivePlugin);
+
   const [showLuaEditor, setShowLuaEditor] = useState(false);
 
   useEffect(() => {
     loadSubCircuitDefs();
-  }, [loadSubCircuitDefs]);
+    loadPlugins();
+  }, [loadSubCircuitDefs, loadPlugins]);
 
   const handleClick = (kind: ComponentKind) => {
     setActiveTool('place');
     setPlacingComponentKind(kind);
     setActiveSubCircuitDefId(null);
+    setActivePlugin(null, null);
   };
 
   const handleCustomClick = (defId: number) => {
     setActiveTool('place');
     setPlacingComponentKind('SubCircuit');
     setActiveSubCircuitDefId(defId);
+    setActivePlugin(null, null);
+  };
+
+  const handlePluginClick = (pluginId: string, kindName: string) => {
+    setActiveTool('place');
+    setPlacingComponentKind('Plugin');
+    setActiveSubCircuitDefId(null);
+    setActivePlugin(pluginId, kindName);
   };
 
   const isPlacingCustom = activeTool === 'place' && placingComponentKind === 'SubCircuit';
+  const isPlacingPlugin = activeTool === 'place' && placingComponentKind === 'Plugin';
 
   return (
     <>
@@ -91,6 +110,28 @@ function ComponentPanel() {
                   📦 {def.name}
                 </div>
               ))}
+            </div>
+          </>
+        )}
+
+        {Object.keys(pluginComponents).length > 0 && (
+          <>
+            <div className="panel-header">{t('panel.plugins')}</div>
+            <div className="component-list">
+              {plugins.filter((p) => p.enabled).map((plugin) =>
+                (pluginComponents[plugin.id] || []).map((reg) => (
+                  <div
+                    key={`${plugin.id}_${reg.kind_name}`}
+                    className={
+                      'component-item' +
+                      (isPlacingPlugin && activePluginId === plugin.id && activePluginKindName === reg.kind_name ? ' active' : '')
+                    }
+                    onClick={() => handlePluginClick(plugin.id, reg.kind_name)}
+                  >
+                    📜 {reg.icon_label}
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}

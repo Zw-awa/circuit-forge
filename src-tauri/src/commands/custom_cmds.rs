@@ -118,7 +118,7 @@ pub fn delete_subcircuit_def(
     // Cascade-delete instances: remove all components on the graph that reference this def
     let comps_to_remove: Vec<u32> = eng.graph.components.iter()
         .filter_map(|(id, c)| {
-            if let ComponentKind::SubCircuit(did) = c.kind {
+            if let ComponentKind::SubCircuit(did) = c.kind.clone() {
                 if did == def_id { Some(*id) } else { None }
             } else {
                 None
@@ -177,7 +177,7 @@ pub fn enter_subcircuit(
     let comp = eng.graph.components.get(&component_id)
         .ok_or("component not found")?;
 
-    let def_id = match comp.kind {
+    let def_id = match comp.kind.clone() {
         ComponentKind::SubCircuit(id) => id,
         _ => return Err("component is not a subcircuit".into()),
     };

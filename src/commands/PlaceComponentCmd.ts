@@ -1,6 +1,7 @@
 import type { Command } from './Command';
 import { addComponent, removeComponent } from '../ipc/simulationIpc';
 import { addSubCircuitInstance, addLuaComponentInstance } from '../ipc/customComponentIpc';
+import { addComponent as addPluginComponent } from '../ipc/pluginIpc';
 import { editorStore } from '../stores/editorStore';
 import type { ComponentKind } from '../types/circuit';
 import type { Pin } from '../types/circuit';
@@ -13,6 +14,8 @@ export class PlaceComponentCmd implements Command {
   private y: number;
   private subCircuitDefId: number | null;
   private luaDefId: number | null;
+  private pluginId: string | null;
+  private pluginKindName: string | null;
   private resultId: number | null = null;
   private componentPins: Pin[] = [];
   private inputPinIds: number[] = [];
@@ -24,12 +27,16 @@ export class PlaceComponentCmd implements Command {
     y: number,
     subCircuitDefId: number | null = null,
     luaDefId: number | null = null,
+    pluginId: string | null = null,
+    pluginKindName: string | null = null,
   ) {
     this.kind = kind;
     this.x = x;
     this.y = y;
     this.subCircuitDefId = subCircuitDefId;
     this.luaDefId = luaDefId;
+    this.pluginId = pluginId;
+    this.pluginKindName = pluginKindName;
   }
 
   async execute(): Promise<void> {
@@ -42,6 +49,8 @@ export class PlaceComponentCmd implements Command {
     } else if (this.kind === 'LuaScript' && this.luaDefId !== null) {
       result = await addLuaComponentInstance(this.luaDefId, this.x, this.y);
       finalKind = 'LuaScript';
+    } else if (this.kind === 'Plugin' && this.pluginId !== null && this.pluginKindName !== null) {
+      result = await addPluginComponent(this.kind, this.x, this.y, this.pluginId, this.pluginKindName);
     } else {
       result = await addComponent(this.kind, this.x, this.y);
     }

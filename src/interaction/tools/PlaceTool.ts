@@ -41,6 +41,8 @@ export class PlaceTool implements Tool {
       e.gridY,
       state.activeSubCircuitDefId,
       state.activeLuaDefId,
+      state.activePluginId,
+      state.activePluginKindName,
     );
     historyStore.getState().execute(cmd);
   }

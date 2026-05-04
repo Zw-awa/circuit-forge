@@ -51,6 +51,7 @@ pub fn evaluate_gate(kind: ComponentKind, inputs: &[Signal], signal_type: &Signa
         ComponentKind::Merger => Signal::Low,
         ComponentKind::SubCircuit(_) => Signal::Low,
         ComponentKind::LuaScript(_) => Signal::Low,
+        ComponentKind::Plugin(_, _) => Signal::Low,
     }
 }
 

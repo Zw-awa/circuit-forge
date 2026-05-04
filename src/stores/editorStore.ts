@@ -39,6 +39,8 @@ interface EditorState {
   placingComponentKind: ComponentKind | null;
   activeSubCircuitDefId: number | null;
   activeLuaDefId: number | null;
+  activePluginId: string | null;
+  activePluginKindName: string | null;
   selectedIds: Set<number>;
   hoveredId: number | null;
   viewport: Viewport;
@@ -61,6 +63,7 @@ interface EditorState {
   setPlacingComponentKind: (kind: ComponentKind | null) => void;
   setActiveSubCircuitDefId: (id: number | null) => void;
   setActiveLuaDefId: (id: number | null) => void;
+  setActivePlugin: (pluginId: string | null, kindName: string | null) => void;
   setSelection: (ids: number[]) => void;
   addToSelection: (id: number) => void;
   removeFromSelection: (id: number) => void;
@@ -80,6 +83,10 @@ interface EditorState {
   exitToLevel: (level: number) => Promise<void>;
 }
 
+function markSpatialHashDirty(): void {
+  (window as any).__pickerMarkSpatialHashDirty?.();
+}
+
 export const editorStore = create<EditorState>()((set, get) => ({
   components: new Map(),
   wires: new Map(),
@@ -89,6 +96,8 @@ export const editorStore = create<EditorState>()((set, get) => ({
   placingComponentKind: null,
   activeSubCircuitDefId: null,
   activeLuaDefId: null,
+  activePluginId: null,
+  activePluginKindName: null,
   selectedIds: new Set(),
   hoveredId: null,
   viewport: { centerX: 0, centerY: 0, zoom: 40 },
@@ -103,6 +112,7 @@ export const editorStore = create<EditorState>()((set, get) => ({
 
   addComponent: (comp) =>
     set((state) => {
+      markSpatialHashDirty();
       const next = new Map(state.components);
       next.set(comp.id, comp);
       return { components: next, isDirty: true };
@@ -110,6 +120,7 @@ export const editorStore = create<EditorState>()((set, get) => ({
 
   removeComponent: (id) =>
     set((state) => {
+      markSpatialHashDirty();
       const next = new Map(state.components);
       next.delete(id);
       const nextPins = new Map(state.pins);
@@ -133,6 +144,7 @@ export const editorStore = create<EditorState>()((set, get) => ({
 
   moveComponent: (id, x, y) =>
     set((state) => {
+      markSpatialHashDirty();
       const nextComponents = new Map(state.components);
       const comp = nextComponents.get(id);
       if (!comp) return {};
@@ -199,6 +211,8 @@ export const editorStore = create<EditorState>()((set, get) => ({
 
   setActiveLuaDefId: (id) => set({ activeLuaDefId: id }),
 
+  setActivePlugin: (pluginId, kindName) => set({ activePluginId: pluginId, activePluginKindName: kindName }),
+
   setSelection: (ids) => set({ selectedIds: new Set(ids) }),
 
   addToSelection: (id) =>
@@ -221,8 +235,9 @@ export const editorStore = create<EditorState>()((set, get) => ({
 
   setViewport: (viewport) => set({ viewport }),
 
-  loadCircuit: (components, wires, pins) =>
-    set({
+  loadCircuit: (components, wires, pins) => {
+    markSpatialHashDirty();
+    return set({
       components: new Map(components.map((c) => [c.id, c])),
       wires: new Map(wires.map((w) => [w.id, w])),
       pins: new Map(pins.map((p) => [p.id, p])),
@@ -233,6 +248,8 @@ export const editorStore = create<EditorState>()((set, get) => ({
       placingComponentKind: null,
       activeSubCircuitDefId: null,
       activeLuaDefId: null,
+      activePluginId: null,
+      activePluginKindName: null,
       viewport: { centerX: 0, centerY: 0, zoom: 40 },
       cursorX: 0,
       cursorY: 0,
@@ -240,10 +257,12 @@ export const editorStore = create<EditorState>()((set, get) => ({
       activeWireColor: undefined,
       isDirty: false,
       subCircuitStack: [],
-    }),
+    });
+  },
 
-  clearCircuit: () =>
-    set({
+  clearCircuit: () => {
+    markSpatialHashDirty();
+    return set({
       components: new Map(),
       wires: new Map(),
       pins: new Map(),
@@ -254,7 +273,10 @@ export const editorStore = create<EditorState>()((set, get) => ({
       activeWireColor: undefined,
       isDirty: false,
       subCircuitStack: [],
-    }),
+      activePluginId: null,
+      activePluginKindName: null,
+    });
+  },
 
   addJunction: (junction) =>
     set((state) => {

@@ -10,12 +10,17 @@ import { historyStore, useHistoryStore } from '../stores/historyStore';
 import { simulationStore, useSimulationStore } from '../stores/simulationStore';
 import { useRuleStore } from '../stores/ruleStore';
 import { useSkinStore } from '../stores/skinStore';
+import { usePluginStore } from '../stores/pluginStore';
+import { pluginCallMenuItem } from '../ipc/pluginIpc';
 import { simStart, simPause, simStep, simReset, setSimSpeed, setSimMode, simStepN } from '../ipc/simulationIpc';
 import { SnapToGridCmd } from '../commands/SnapToGridCmd';
 import SubCircuitCreator from './SubCircuitCreator';
 import RuleEditor from './RuleEditor';
 import SkinManager from './SkinManager';
 import ExportDialog from './ExportDialog';
+import KeybindingSettings from './KeybindingSettings';
+import WorkshopBrowser from './WorkshopBrowser';
+import PluginManager from './PluginManager';
 
 const SPEEDS: Array<{ label: string; value: number }> = [
   { label: 'simulation.speed025x', value: 0.25 },
@@ -62,8 +67,14 @@ function Toolbar({ onToggleWaveform, waveformVisible }: { onToggleWaveform: () =
   const [showRuleEditor, setShowRuleEditor] = useState(false);
   const [showSkinManager, setShowSkinManager] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showKeybindingSettings, setShowKeybindingSettings] = useState(false);
+  const [showWorkshopBrowser, setShowWorkshopBrowser] = useState(false);
+  const [showPluginManager, setShowPluginManager] = useState(false);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const activeSkin = useSkinStore((s) => s.activeSkin);
+
+  const pluginMenuItems = usePluginStore((s) => s.pluginMenuItems);
+  const loadPlugins = usePluginStore((s) => s.loadPlugins);
 
   const rulePacks = useRuleStore((s) => s.rulePacks);
   const activeRulePackId = useRuleStore((s) => s.activeRulePackId);
@@ -72,7 +83,8 @@ function Toolbar({ onToggleWaveform, waveformVisible }: { onToggleWaveform: () =
 
   useEffect(() => {
     loadRulePacks();
-  }, [loadRulePacks]);
+    loadPlugins();
+  }, [loadRulePacks, loadPlugins]);
 
   const handleSpeedChange = useCallback(async (multiplier: number) => {
     try {
@@ -460,6 +472,39 @@ function Toolbar({ onToggleWaveform, waveformVisible }: { onToggleWaveform: () =
       <div className="toolbar-divider" />
 
       <div className="toolbar-group">
+        <button
+          onClick={() => setShowKeybindingSettings(true)}
+          title={t('keybindings.title')}
+        >
+          ⌨ {t('keybindings.shortTitle')}
+        </button>
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group">
+        <button
+          onClick={() => setShowWorkshopBrowser(true)}
+          title={t('workshop.title')}
+        >
+          🏪 {t('workshop.title')}
+        </button>
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group">
+        <button
+          onClick={() => setShowPluginManager(true)}
+          title={t('plugins.managerTitle')}
+        >
+          🧩 {t('plugins.title')}
+        </button>
+      </div>
+
+      <div className="toolbar-divider" />
+
+      <div className="toolbar-group">
         <button onClick={async () => {
           try {
             const json = await saveProject();
@@ -538,6 +583,28 @@ function Toolbar({ onToggleWaveform, waveformVisible }: { onToggleWaveform: () =
 
     {showExportDialog && (
       <ExportDialog onClose={() => setShowExportDialog(false)} />
+    )}
+    {showKeybindingSettings && (
+      <KeybindingSettings onClose={() => setShowKeybindingSettings(false)} />
+    )}
+    {showWorkshopBrowser && (
+      <WorkshopBrowser onClose={() => setShowWorkshopBrowser(false)} />
+    )}
+    {showPluginManager && (
+      <PluginManager onClose={() => setShowPluginManager(false)} />
+    )}
+
+    {Object.entries(pluginMenuItems).map(([pluginId, items]) =>
+      items.map((item) => (
+        <button
+          key={`${pluginId}_${item.id}`}
+          className="toolbar-plugin-menuitem"
+          onClick={() => pluginCallMenuItem(pluginId, item.id)}
+          style={{ display: 'none' }}
+        >
+          {item.label}
+        </button>
+      ))
     )}
     </>
   );

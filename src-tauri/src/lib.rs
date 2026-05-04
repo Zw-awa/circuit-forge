@@ -8,6 +8,9 @@ mod verification;
 mod skin;
 mod packaging;
 mod debugging;
+mod plugins;
+mod workshop;
+mod keybindings;
 
 use std::sync::{Arc, Mutex};
 use simulation::engine::SimulationEngine;
@@ -93,6 +96,23 @@ pub fn run() {
             commands::debug_cmds::debug_continue,
             commands::debug_cmds::get_bulk_signal_history,
             commands::debug_cmds::export_waveform_csv,
+            commands::plugin_cmds::plugin_load,
+            commands::plugin_cmds::plugin_unload,
+            commands::plugin_cmds::plugin_list,
+            commands::plugin_cmds::plugin_set_enabled,
+            commands::plugin_cmds::plugin_get_components,
+            commands::plugin_cmds::plugin_get_menu_items,
+            commands::plugin_cmds::plugin_get_export_formats,
+            commands::plugin_cmds::plugin_call_menu_item,
+            commands::plugin_cmds::plugin_evaluate,
+            commands::keybinding_cmds::get_keybindings,
+            commands::keybinding_cmds::set_keybinding,
+            commands::keybinding_cmds::reset_keybindings,
+            commands::keybinding_cmds::export_keybindings,
+            commands::keybinding_cmds::import_keybindings,
+            commands::workshop_cmds::workshop_fetch_index,
+            commands::workshop_cmds::workshop_download_item,
+            commands::workshop_cmds::workshop_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

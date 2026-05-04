@@ -62,6 +62,7 @@ export class WireLayer {
   private wireInstances: WireSegmentInstance[] = [];
   private previewSegments: WireSegment[] = [];
   private previewColor: [number, number, number] = [0.7, 0.7, 0.5];
+  private instancesDirty = true;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -211,8 +212,15 @@ export class WireLayer {
     this.previewSegments = [];
   }
 
+  markDirty(): void {
+    this.instancesDirty = true;
+  }
+
   draw(camera: Camera): void {
-    this.buildWireInstances();
+    if (this.instancesDirty) {
+      this.buildWireInstances();
+      this.instancesDirty = false;
+    }
 
     const gl = this.gl;
     const skin = useSkinStore.getState().activeSkin;

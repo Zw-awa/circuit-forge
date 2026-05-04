@@ -2,9 +2,24 @@ import { Camera } from '../renderer/Camera';
 import type { ToolManager } from './ToolManager';
 import { editorStore } from '../stores/editorStore';
 import { historyStore } from '../stores/historyStore';
+import { useKeybindingStore } from '../stores/keybindingStore';
+import { useThemeStore } from '../stores/themeStore';
+import { createSnapshot } from '../ipc/packagingIpc';
 import { DeleteComponentCmd } from '../commands/DeleteComponentCmd';
 import { DeleteWireCmd } from '../commands/DeleteWireCmd';
 import { CompositeCmd } from '../commands/CompositeCmd';
+
+function normalizeKey(e: KeyboardEvent): string {
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.altKey) parts.push('Alt');
+  const key = e.key === ' ' ? 'Space' : e.key;
+  if (!['Control', 'Shift', 'Alt', 'Meta'].includes(key)) {
+    parts.push(key.length === 1 ? key.toUpperCase() : key);
+  }
+  return parts.join('+');
+}
 
 export class InputManager {
   private canvas: HTMLCanvasElement;
@@ -21,6 +36,36 @@ export class InputManager {
   private boundOnContextMenu: (e: Event) => void;
   private boundOnKeyDown: (e: KeyboardEvent) => void;
   private boundOnKeyUp: (e: KeyboardEvent) => void;
+
+  private actionHandlers: Record<string, () => void> = {
+    'tool.select': () => editorStore.getState().setActiveTool('select'),
+    'tool.place': () => editorStore.getState().setActiveTool('place'),
+    'tool.wire': () => editorStore.getState().setActiveTool('wire'),
+    'tool.delete': () => editorStore.getState().setActiveTool('delete'),
+    'edit.undo': () => historyStore.getState().undo(),
+    'edit.redo': () => historyStore.getState().redo(),
+    'edit.redo_alt': () => historyStore.getState().redo(),
+    'edit.delete': () => this.handleDelete(),
+    'edit.delete_alt': () => this.handleDelete(),
+    'file.save': () => window.dispatchEvent(new CustomEvent('circuit-save')),
+    'file.open': () => window.dispatchEvent(new CustomEvent('circuit-open')),
+    'canvas.gridMode': () => editorStore.getState().setCanvasMode('grid'),
+    'canvas.freeMode': () => editorStore.getState().setCanvasMode('free'),
+    'canvas.escape': () => editorStore.getState().setActiveTool('select'),
+    'canvas.pan': () => {},
+    'sim.signalDisplay': () => {
+      window.dispatchEvent(new CustomEvent('toggle-signal-display'));
+    },
+    'snapshot.create': async () => {
+      try {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        await createSnapshot(`snapshot-${ts}`);
+      } catch (err) {
+        console.error('Snapshot create failed:', err);
+      }
+    },
+    'theme.toggle': () => useThemeStore.getState().toggleTheme(),
+  };
 
   constructor(canvas: HTMLCanvasElement, camera: Camera, toolManager: ToolManager) {
     this.canvas = canvas;
@@ -144,67 +189,21 @@ export class InputManager {
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    const keyStr = normalizeKey(e);
+    const action = useKeybindingStore.getState().getActionForKey(keyStr);
+    if (action) {
+      const handler = this.actionHandlers[action];
+      if (handler) {
+        e.preventDefault();
+        handler();
+        return;
+      }
+    }
+
+    // Space pan is the default behavior when not bound to another action
     if (e.code === 'Space') {
       this.spaceDown = true;
       e.preventDefault();
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 's') {
-      e.preventDefault();
-      window.dispatchEvent(new CustomEvent('circuit-save'));
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 'o') {
-      e.preventDefault();
-      window.dispatchEvent(new CustomEvent('circuit-open'));
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      historyStore.getState().undo();
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 'y') {
-      e.preventDefault();
-      historyStore.getState().redo();
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 'Z') {
-      e.preventDefault();
-      historyStore.getState().redo();
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      editorStore.getState().setActiveTool('select');
-      return;
-    }
-
-    if (e.key === 'Delete') {
-      e.preventDefault();
-      this.handleDelete();
-      return;
-    }
-
-    if (e.key === '1') {
-      editorStore.getState().setActiveTool('select');
-      return;
-    }
-    if (e.key === '2') {
-      editorStore.getState().setActiveTool('place');
-      return;
-    }
-    if (e.key === '3') {
-      editorStore.getState().setActiveTool('wire');
-      return;
-    }
-    if (e.key === '4') {
-      editorStore.getState().setActiveTool('delete');
       return;
     }
   };

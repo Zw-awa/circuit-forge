@@ -1,5 +1,6 @@
 import { editorStore } from '../stores/editorStore';
 import { resolveWireEndpointPosition } from '../utils/wireEndpointResolver';
+import { SpatialHash } from '../utils/spatialHash';
 
 interface WireSegment {
   x1: number;
@@ -47,10 +48,33 @@ function computeLRouting(
 }
 
 export class Picker {
+  private spatialHash = new SpatialHash();
+  private spatialHashDirty = true;
+
+  rebuildSpatialHash(): void {
+    const state = editorStore.getState();
+    this.spatialHash.rebuild(state.components);
+    this.spatialHashDirty = false;
+  }
+
+  private ensureSpatialHash(): void {
+    if (this.spatialHashDirty) {
+      this.rebuildSpatialHash();
+    }
+  }
+
+  markSpatialHashDirty(): void {
+    this.spatialHashDirty = true;
+  }
+
   hitTestComponent(worldX: number, worldY: number): number | null {
     const state = editorStore.getState();
     const components = state.components;
-    for (const comp of components.values()) {
+    this.ensureSpatialHash();
+    const candidates = this.spatialHash.queryPoint(worldX, worldY);
+    for (const id of candidates) {
+      const comp = components.get(id);
+      if (!comp) continue;
       const hw = 1.0;
       const hh = 1.0;
       if (
@@ -87,9 +111,12 @@ export class Picker {
   hitTestRect(minX: number, minY: number, maxX: number, maxY: number): number[] {
     const state = editorStore.getState();
     const components = state.components;
+    this.ensureSpatialHash();
+    const candidates = this.spatialHash.queryRect(minX, minY, maxX, maxY);
     const result: number[] = [];
-
-    for (const comp of components.values()) {
+    for (const id of candidates) {
+      const comp = components.get(id);
+      if (!comp) continue;
       const hw = 1.0;
       const hh = 1.0;
       if (
@@ -101,7 +128,6 @@ export class Picker {
         result.push(comp.id);
       }
     }
-
     return result;
   }
 

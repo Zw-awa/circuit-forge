@@ -42,13 +42,14 @@ impl CircuitGraph {
         x: f32,
         y: f32,
     ) -> Result<(ComponentId, Vec<PinId>, Vec<PinId>), String> {
-        match kind {
+        match &kind {
             ComponentKind::SubCircuit(_) => return Err("use add_subcircuit_component instead".into()),
             ComponentKind::LuaScript(_) => return Err("use add_lua_component instead".into()),
             _ => {}
         }
         let comp_id = self.alloc_id();
 
+        let kind_for_checks = kind.clone();
         let (input_offsets, output_offsets): (Vec<(f32, f32)>, Vec<(f32, f32)>) = match kind {
             ComponentKind::And | ComponentKind::Or | ComponentKind::Nand | ComponentKind::Xor => {
                 (vec![(-1.0, 0.3), (-1.0, -0.3)], vec![(1.0, 0.0)])
@@ -111,7 +112,7 @@ impl CircuitGraph {
                 }
                 (inputs, vec![(1.0, 0.0)])
             }
-            ComponentKind::SubCircuit(_) | ComponentKind::LuaScript(_) => {
+            ComponentKind::SubCircuit(_) | ComponentKind::LuaScript(_) | ComponentKind::Plugin(_, _) => {
                 (Vec::new(), Vec::new())
             }
         };
@@ -172,7 +173,7 @@ impl CircuitGraph {
                 clock_duty: Some(0.5),
                 clock_counter: Some(0),
                 random_probability: Some(0.5),
-                constant_value: if kind == ComponentKind::Constant {
+                constant_value: if kind_for_checks == ComponentKind::Constant {
                     Some(Signal::High)
                 } else {
                     None
@@ -181,7 +182,7 @@ impl CircuitGraph {
                 oscilloscope_time_window: Some(100),
                 delay_ticks: Some(1),
                 delay_buffer: None,
-                bus_width: if kind == ComponentKind::Splitter || kind == ComponentKind::Merger {
+                bus_width: if kind_for_checks == ComponentKind::Splitter || kind_for_checks == ComponentKind::Merger {
                     Some(4)
                 } else {
                     Some(1)
@@ -548,6 +549,76 @@ impl CircuitGraph {
         Ok((comp_id, input_pins, output_pins))
     }
 
+    pub fn add_plugin_component(
+        &mut self,
+        plugin_id: &str,
+        kind_name: &str,
+        input_offsets: Vec<(f32, f32)>,
+        output_offsets: Vec<(f32, f32)>,
+        x: f32,
+        y: f32,
+    ) -> Result<(ComponentId, Vec<PinId>, Vec<PinId>), String> {
+        let comp_id = self.alloc_id();
+        let mut input_pins = Vec::new();
+        let mut output_pins = Vec::new();
+
+        for (ox, oy) in &input_offsets {
+            let pin_id = self.alloc_id();
+            self.pins.insert(
+                pin_id,
+                Pin {
+                    id: pin_id,
+                    owner: comp_id,
+                    is_output: false,
+                    net: None,
+                    offset_x: *ox,
+                    offset_y: *oy,
+                },
+            );
+            input_pins.push(pin_id);
+        }
+
+        for (ox, oy) in &output_offsets {
+            let pin_id = self.alloc_id();
+            self.pins.insert(
+                pin_id,
+                Pin {
+                    id: pin_id,
+                    owner: comp_id,
+                    is_output: true,
+                    net: None,
+                    offset_x: *ox,
+                    offset_y: *oy,
+                },
+            );
+            output_pins.push(pin_id);
+        }
+
+        let comp = Component {
+            id: comp_id,
+            kind: ComponentKind::Plugin(plugin_id.to_string(), kind_name.to_string()),
+            x,
+            y,
+            input_pins: input_pins.clone(),
+            output_pins: output_pins.clone(),
+            toggle_state: None,
+            press_state: None,
+            clock_period: None,
+            clock_duty: None,
+            clock_counter: None,
+            random_probability: None,
+            constant_value: None,
+            oscilloscope_channels: None,
+            oscilloscope_time_window: None,
+            delay_ticks: None,
+            delay_buffer: None,
+            bus_width: None,
+            lua_state: None,
+        };
+        self.components.insert(comp_id, comp);
+        Ok((comp_id, input_pins, output_pins))
+    }
+
     pub fn extract_subgraph(
         &self,
         component_ids: &[ComponentId],
@@ -603,64 +674,63 @@ impl CircuitGraph {
         let mut id_map: HashMap<u32, u32> = HashMap::new();
         let mut new_next = 1u32;
 
-        // Remap components
+        // Pass 1: assign new IDs for every entity to build a complete mapping
         let old_comps: Vec<_> = self.components.drain().collect();
-        for (old_id, mut comp) in old_comps {
-            let new_id = new_next;
-            new_next += 1;
-            id_map.insert(old_id, new_id);
-            comp.id = new_id;
-            // Remap pin references in component
-            comp.input_pins = comp
-                .input_pins
-                .iter()
-                .map(|pid| id_map.get(pid).copied().unwrap_or(*pid))
-                .collect();
-            comp.output_pins = comp
-                .output_pins
-                .iter()
-                .map(|pid| id_map.get(pid).copied().unwrap_or(*pid))
-                .collect();
-            self.components.insert(new_id, comp);
-        }
-
-        // Remap pins
         let old_pins: Vec<_> = self.pins.drain().collect();
-        for (old_id, mut pin) in old_pins {
-            let new_id = new_next;
+        let old_wires: Vec<_> = self.wires.drain().collect();
+        let old_junctions: Vec<_> = self.junctions.drain().collect();
+
+        for &(old_id, _) in &old_comps {
+            id_map.insert(old_id, new_next);
             new_next += 1;
-            id_map.insert(old_id, new_id);
-            pin.id = new_id;
-            pin.owner = id_map.get(&pin.owner).copied().unwrap_or(pin.owner);
-            self.pins.insert(new_id, pin);
+        }
+        for &(old_id, _) in &old_pins {
+            id_map.insert(old_id, new_next);
+            new_next += 1;
+        }
+        for &(old_id, _) in &old_wires {
+            id_map.insert(old_id, new_next);
+            new_next += 1;
+        }
+        for &(old_id, _) in &old_junctions {
+            id_map.insert(old_id, new_next);
+            new_next += 1;
         }
 
-        // Remap wires
-        let old_wires: Vec<_> = self.wires.drain().collect();
+        let remap = |old: u32| id_map.get(&old).copied().unwrap_or(old);
+
+        // Pass 2: apply mapping
+        for (old_id, mut comp) in old_comps {
+            comp.id = remap(old_id);
+            comp.input_pins = comp.input_pins.iter().map(|p| remap(*p)).collect();
+            comp.output_pins = comp.output_pins.iter().map(|p| remap(*p)).collect();
+            self.components.insert(comp.id, comp);
+        }
+
+        for (old_id, mut pin) in old_pins {
+            pin.id = remap(old_id);
+            pin.owner = remap(pin.owner);
+            self.pins.insert(pin.id, pin);
+        }
+
         for (old_id, mut wire) in old_wires {
-            let new_id = new_next;
-            new_next += 1;
-            id_map.insert(old_id, new_id);
-            wire.id = new_id;
+            wire.id = remap(old_id);
             match &mut wire.start {
-                WireEndpoint::Pin(pid) => *pid = id_map.get(pid).copied().unwrap_or(*pid),
-                _ => {}
+                WireEndpoint::Pin(pid) => *pid = remap(*pid),
+                WireEndpoint::Junction(jid) => *jid = remap(*jid),
             }
             match &mut wire.end {
-                WireEndpoint::Pin(pid) => *pid = id_map.get(pid).copied().unwrap_or(*pid),
-                _ => {}
+                WireEndpoint::Pin(pid) => *pid = remap(*pid),
+                WireEndpoint::Junction(jid) => *jid = remap(*jid),
             }
-            self.wires.insert(new_id, wire);
+            wire.net_id = remap(wire.net_id);
+            self.wires.insert(wire.id, wire);
         }
 
-        // Remap junctions
-        let old_junctions: Vec<_> = self.junctions.drain().collect();
         for (old_id, mut j) in old_junctions {
-            let new_id = new_next;
-            new_next += 1;
-            id_map.insert(old_id, new_id);
-            j.id = new_id;
-            self.junctions.insert(new_id, j);
+            j.id = remap(old_id);
+            j.net_id = remap(j.net_id);
+            self.junctions.insert(j.id, j);
         }
 
         // Rebuild nets from pins
@@ -668,7 +738,7 @@ impl CircuitGraph {
         for (pin_id, pin) in &self.pins {
             if let Some(net_id) = pin.net {
                 self.nets
-                    .entry(id_map.get(&net_id).copied().unwrap_or(net_id))
+                    .entry(remap(net_id))
                     .or_default()
                     .push(*pin_id);
             }

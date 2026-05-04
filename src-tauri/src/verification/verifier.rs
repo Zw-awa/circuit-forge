@@ -180,7 +180,7 @@ fn simulate_inner_graph(
         let mut changed = false;
         for &comp_id in &comp_ids {
             if let Some(comp) = graph.components.get(&comp_id) {
-                match comp.kind {
+                match comp.kind.clone() {
                     ComponentKind::And | ComponentKind::Or | ComponentKind::Not
                     | ComponentKind::Nand | ComponentKind::Xor => {
                         let comp_inputs: Vec<Signal> = comp.input_pins.iter()
@@ -189,7 +189,7 @@ fn simulate_inner_graph(
                             .filter_map(|n| signals.get(&n).copied())
                             .collect();
                         if comp_inputs.len() == comp.input_pins.len() {
-                            let output = evaluate_gate(comp.kind, &comp_inputs, signal_type);
+                            let output = evaluate_gate(comp.kind.clone(), &comp_inputs, signal_type);
                             for out_pin_id in &comp.output_pins {
                                 if let Some(pin) = graph.pins.get(out_pin_id) {
                                     if let Some(net_id) = pin.net {
@@ -373,7 +373,8 @@ fn simulate_inner_graph(
                             }
                         }
                     }
-                    ComponentKind::Led | ComponentKind::SevenSegment | ComponentKind::Oscilloscope => {}
+                    ComponentKind::Led | ComponentKind::SevenSegment | ComponentKind::Oscilloscope
+                    | ComponentKind::Plugin(_, _) => {}
                 }
             }
         }

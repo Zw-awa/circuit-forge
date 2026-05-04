@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::circuit::types::{
     ComponentKind, NetId, Signal, ComponentId, SimMode, SignalType, AttenuationModel,
@@ -11,6 +12,7 @@ use crate::scripting::lua_engine::LuaComponentDefRegistry;
 use crate::verification::truth_table::TruthTable;
 use crate::skin::types::SkinManifest;
 use crate::debugging::breakpoint::{BreakpointManager, BreakpointHitInfo};
+use crate::plugins::PluginManager;
 use super::evaluator::evaluate_gate;
 use super::tick_engine::TickEngine;
 
@@ -85,6 +87,7 @@ pub struct SimulationEngine {
     pub snapshots: Vec<(u32, String, String, String)>,
     pub next_snapshot_id: u32,
     pub breakpoint_manager: BreakpointManager,
+    pub plugin_manager: PluginManager,
     delayed_events: Vec<DelayedEvent>,
     next_truth_table_id: u32,
 }
@@ -113,6 +116,7 @@ impl SimulationEngine {
             snapshots: Vec::new(),
             next_snapshot_id: 1,
             breakpoint_manager: BreakpointManager::new(),
+            plugin_manager: PluginManager::new(),
             delayed_events: Vec::new(),
             next_truth_table_id: 1,
         }
@@ -172,6 +176,167 @@ impl SimulationEngine {
         (changed, None)
     }
 
+    /// Identify connected component groups using Union-Find.
+    /// Returns independent subgraphs that can be evaluated in parallel.
+    pub fn identify_independent_subgraphs(&self) -> Vec<Vec<ComponentId>> {
+        let mut parent: HashMap<ComponentId, ComponentId> = HashMap::new();
+        for comp_id in self.graph.components.keys() {
+            parent.insert(*comp_id, *comp_id);
+        }
+
+        fn find(
+            parent: &mut HashMap<ComponentId, ComponentId>,
+            x: ComponentId,
+        ) -> ComponentId {
+            let px = *parent.get(&x).unwrap_or(&x);
+            if px != x {
+                let root = find(parent, px);
+                parent.insert(x, root);
+                root
+            } else {
+                x
+            }
+        }
+
+        fn union(
+            parent: &mut HashMap<ComponentId, ComponentId>,
+            x: ComponentId,
+            y: ComponentId,
+        ) {
+            let rx = find(parent, x);
+            let ry = find(parent, y);
+            if rx != ry {
+                parent.insert(rx, ry);
+            }
+        }
+
+        for pin_ids in self.graph.nets.values() {
+            let owners: Vec<ComponentId> = pin_ids
+                .iter()
+                .filter_map(|pid| self.graph.pins.get(pid).map(|p| p.owner))
+                .collect();
+            for i in 1..owners.len() {
+                union(&mut parent, owners[0], owners[i]);
+            }
+        }
+
+        let mut groups: HashMap<ComponentId, Vec<ComponentId>> = HashMap::new();
+        for comp_id in self.graph.components.keys() {
+            let root = find(&mut parent, *comp_id);
+            groups.entry(root).or_default().push(*comp_id);
+        }
+        groups.into_values().collect()
+    }
+
+    /// Pure-function gate evaluation for a subgraph (no &mut self, safe for rayon).
+    /// Only handles basic logic gates. Complex components are skipped.
+    pub(crate) fn propagate_subgraph_pure(
+        graph: &crate::circuit::graph::CircuitGraph,
+        signal_snapshot: &HashMap<NetId, Signal>,
+        comp_ids: &[ComponentId],
+    ) -> HashMap<NetId, Signal> {
+        let mut local_signals: HashMap<NetId, Signal> = HashMap::new();
+        for comp_id in comp_ids {
+            if let Some(comp) = graph.components.get(comp_id) {
+                match comp.kind {
+                    ComponentKind::And
+                    | ComponentKind::Or
+                    | ComponentKind::Not
+                    | ComponentKind::Nand
+                    | ComponentKind::Xor => {
+                        let inputs: Vec<Signal> = comp
+                            .input_pins
+                            .iter()
+                            .filter_map(|pid| graph.pins.get(pid))
+                            .filter_map(|p| p.net)
+                            .map(|nid| {
+                                signal_snapshot.get(&nid).copied().unwrap_or(Signal::Low)
+                            })
+                            .collect();
+                        let output = evaluate_gate(
+                            comp.kind.clone(),
+                            &inputs,
+                            &SignalType::Bit,
+                        );
+                        for out_pin_id in &comp.output_pins {
+                            if let Some(pin) = graph.pins.get(out_pin_id) {
+                                if let Some(net_id) = pin.net {
+                                    local_signals.insert(net_id, output);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        local_signals
+    }
+
+    pub fn propagate_parallel(
+        &mut self,
+    ) -> (HashMap<NetId, Signal>, Option<BreakpointHitInfo>) {
+        self.process_delayed_events();
+
+        while let Some(event) = self.event_queue.pop_front() {
+            let old = self.signals.get(&event.net_id).copied().unwrap_or(Signal::Low);
+            let signal = self.apply_attenuation(event.new_signal);
+            if old != signal {
+                self.signals.insert(event.net_id, signal);
+            }
+        }
+
+        let subgraphs = self.identify_independent_subgraphs();
+        let signal_snapshot = self.signals.clone();
+        let graph_ref = &self.graph;
+
+        // Phase 2: parallel evaluation of each subgraph
+        let results: Vec<HashMap<NetId, Signal>> = subgraphs
+            .par_iter()
+            .map(|comp_ids| {
+                Self::propagate_subgraph_pure(graph_ref, &signal_snapshot, comp_ids)
+            })
+            .collect();
+
+        // Phase 3: merge results (single-threaded)
+        let mut all_changed = HashMap::new();
+        for r in results {
+            for (net_id, new_signal) in r {
+                let old = signal_snapshot
+                    .get(&net_id)
+                    .copied()
+                    .unwrap_or(Signal::Low);
+                if old != new_signal {
+                    self.signals.insert(net_id, new_signal);
+                    self.record_signal_history(net_id, new_signal);
+                    all_changed.insert(net_id, new_signal);
+                }
+            }
+        }
+
+        // Breakpoint check (single-threaded, after merge)
+        let bp_hit = if !all_changed.is_empty() {
+            let mut hit = None;
+            for (&net_id, &new_signal) in &all_changed {
+                let old = signal_snapshot
+                    .get(&net_id)
+                    .copied()
+                    .unwrap_or(Signal::Low);
+                if let Some(h) = self.breakpoint_manager.check(net_id, old, new_signal) {
+                    self.status = SimStatus::Paused;
+                    hit = Some(h);
+                    break;
+                }
+            }
+            hit
+        } else {
+            None
+        };
+
+        self.tick_count += 1;
+        (all_changed, bp_hit)
+    }
+
     pub fn step_single_event(&mut self) -> Result<StepResult, String> {
         if let Some(event) = self.event_queue.pop_front() {
             let old = self.signals.get(&event.net_id).copied().unwrap_or(Signal::Low);
@@ -218,6 +383,7 @@ impl SimulationEngine {
             Some(c) => c.clone(),
             None => return,
         };
+        let kind_for_gate = comp.kind.clone();
         match comp.kind {
             ComponentKind::Switch
             | ComponentKind::Led
@@ -336,6 +502,31 @@ impl SimulationEngine {
                 }
                 return;
             }
+            ComponentKind::Plugin(ref plugin_id, ref kind_name) => {
+                let inputs: Vec<Signal> = comp.input_pins.iter()
+                    .filter_map(|pid| self.graph.pins.get(pid))
+                    .filter_map(|p| p.net)
+                    .filter_map(|nid| self.signals.get(&nid).copied())
+                    .collect();
+                let state = comp.lua_state.clone().unwrap_or(serde_json::json!({}));
+                match self.plugin_manager.evaluate(plugin_id, kind_name, &inputs, &state) {
+                    Ok((outputs, new_state)) => {
+                        if let Some(comp_mut) = self.graph.components.get_mut(&comp.id) {
+                            comp_mut.lua_state = Some(new_state);
+                        }
+                        for (i, out_pin_id) in comp.output_pins.iter().enumerate() {
+                            let out_signal = if i < outputs.len() { outputs[i] } else { Signal::Low };
+                            if let Some(pin) = self.graph.pins.get(out_pin_id) {
+                                if let Some(net_id) = pin.net {
+                                    self.queue_gate_event(net_id, out_signal, 0);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => { eprintln!("Plugin eval error: {}", e); }
+                }
+                return;
+            }
             _ => {}
         }
         let delay = self.rule_registry.active().gate_delay;
@@ -351,7 +542,7 @@ impl SimulationEngine {
                     .unwrap_or(Signal::Low)
             })
             .collect();
-        let output = evaluate_gate(comp.kind, &inputs, &self.rule_registry.active().signal_type);
+        let output = evaluate_gate(kind_for_gate, &inputs, &self.rule_registry.active().signal_type);
         for out_pin_id in &comp.output_pins {
             if let Some(pin) = self.graph.pins.get(out_pin_id) {
                 if let Some(net_id) = pin.net {
@@ -408,7 +599,7 @@ impl SimulationEngine {
             sorted_ids.sort();
             for inner_comp_id in sorted_ids {
             if let Some(inner_comp) = def.inner_graph.components.get(&inner_comp_id) {
-                match inner_comp.kind {
+                match inner_comp.kind.clone() {
                     ComponentKind::And | ComponentKind::Or | ComponentKind::Not
                     | ComponentKind::Nand | ComponentKind::Xor => {
                         let inputs: Vec<Signal> = inner_comp.input_pins.iter()
@@ -417,7 +608,7 @@ impl SimulationEngine {
                             .filter_map(|n| inner_signals.get(&n).copied())
                             .collect();
                         if inputs.len() == inner_comp.input_pins.len() {
-                            let output = evaluate_gate(inner_comp.kind, &inputs, &rule_registry.active().signal_type);
+                            let output = evaluate_gate(inner_comp.kind.clone(), &inputs, &rule_registry.active().signal_type);
                             for out_pin_id in &inner_comp.output_pins {
                                 if let Some(pin) = def.inner_graph.pins.get(out_pin_id) {
                                     if let Some(net_id) = pin.net {
@@ -571,7 +762,8 @@ impl SimulationEngine {
                             }
                         }
                     }
-                    ComponentKind::Led | ComponentKind::SevenSegment | ComponentKind::Oscilloscope => {
+                    ComponentKind::Led | ComponentKind::SevenSegment | ComponentKind::Oscilloscope
+                    | ComponentKind::Plugin(_, _) => {
                         // Output-only components — no action needed
                     }
                 }
@@ -692,7 +884,11 @@ impl SimulationEngine {
                 self.advance_clocks();
                 self.advance_randoms();
                 self.advance_delay_lines();
-                self.propagate()
+                if self.graph.components.len() > 200 {
+                    self.propagate_parallel()
+                } else {
+                    self.propagate()
+                }
             }
             SimMode::TickDriven => {
                 self.tick_driven_step()

@@ -3,7 +3,7 @@ export type ComponentKind =
   | 'Button' | 'Clock' | 'Random' | 'Constant'
   | 'SevenSegment' | 'Oscilloscope'
   | 'DelayLine' | 'Splitter' | 'Merger'
-  | 'SubCircuit' | 'LuaScript';
+  | 'SubCircuit' | 'LuaScript' | 'Plugin';
 
 export interface CircuitComponent {
   id: number;

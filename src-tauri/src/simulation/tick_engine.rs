@@ -43,7 +43,6 @@ impl TickEngine {
             }
         }
         std::mem::swap(&mut self.current_signals, &mut self.next_signals);
-        self.next_signals = self.current_signals.clone();
         changed
     }
 
@@ -53,7 +52,7 @@ impl TickEngine {
         graph: &CircuitGraph,
         signal_type: &SignalType,
     ) {
-        match comp.kind {
+        match comp.kind.clone() {
             ComponentKind::And
             | ComponentKind::Or
             | ComponentKind::Not
@@ -71,7 +70,7 @@ impl TickEngine {
                             .unwrap_or(Signal::Low)
                     })
                     .collect();
-                let output = evaluate_gate(comp.kind, &inputs, signal_type);
+                let output = evaluate_gate(comp.kind.clone(), &inputs, signal_type);
                 for out_pin_id in &comp.output_pins {
                     if let Some(pin) = graph.pins.get(out_pin_id) {
                         if let Some(net_id) = pin.net {

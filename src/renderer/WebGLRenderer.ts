@@ -48,12 +48,13 @@ export class WebGLRenderer {
   private animFrameId: number | null = null;
   private running = false;
   private dirty = true;
-  private unsubscribe: () => void;
+  private editorUnsubscribe: () => void;
   private simUnsubscribe: () => void;
   private themeUnsubscribe: () => void;
   private skinUnsubscribe: () => void;
   private debugUnsubscribe: () => void;
   private clearColor: [number, number, number] = [0.118, 0.118, 0.180];
+  private prevSignalKeys: string = '';
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -70,8 +71,20 @@ export class WebGLRenderer {
     this.wireLayer = new WireLayer(gl);
     this.breakpointLayer = new BreakpointLayer(gl);
 
-    this.unsubscribe = editorStore.subscribe(() => { this.dirty = true; });
-    this.simUnsubscribe = simulationStore.subscribe(() => { this.dirty = true; });
+    this.editorUnsubscribe = editorStore.subscribe(() => {
+      this.componentLayer.markDirty();
+      this.wireLayer.markDirty();
+      this.dirty = true;
+    });
+    this.simUnsubscribe = simulationStore.subscribe(() => {
+      const signalKeys = [...simulationStore.getState().signals.keys()].sort().join(',');
+      if (signalKeys !== this.prevSignalKeys) {
+        this.prevSignalKeys = signalKeys;
+        this.componentLayer.markDirty();
+        this.wireLayer.markDirty();
+      }
+      this.dirty = true;
+    });
     this.themeUnsubscribe = useThemeStore.subscribe(() => { this.updateThemeColors(); this.dirty = true; });
     this.skinUnsubscribe = useSkinStore.subscribe(() => { this.onSkinChanged(); this.dirty = true; });
     this.debugUnsubscribe = useDebugStore.subscribe(() => { this.dirty = true; });
@@ -199,7 +212,7 @@ export class WebGLRenderer {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
     }
-    this.unsubscribe();
+    this.editorUnsubscribe();
     this.simUnsubscribe();
     this.themeUnsubscribe();
     this.skinUnsubscribe();

@@ -75,7 +75,7 @@ pub fn check_circular_reference(
     }
     if let Some(def) = registry.get(def_id) {
         for comp in def.inner_graph.components.values() {
-            if let super::types::ComponentKind::SubCircuit(inner_id) = comp.kind {
+            if let super::types::ComponentKind::SubCircuit(inner_id) = comp.kind.clone() {
                 if check_circular_reference(registry, inner_id, visited) {
                     return true;
                 }

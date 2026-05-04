@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added (Phase 5 — Community & Plugins)
+- **Plugin system**: Lua-based plugin loading/unloading with sandboxed execution environment
+- Plugin frontend UI: Plugin Manager modal with enable/disable toggle, component registration browser
+- Plugin IPC bridge: 9 Tauri commands exposed to frontend (load, unload, list, setEnabled, getComponents, getMenuItems, getExportFormats, callMenuItem, evaluate)
+- Plugin-registered components appear in ComponentPanel under "Plugins" section with 📜 icon
+- Plugin menu items integrated into toolbar
+- `ComponentKind::Plugin(String, String)` for Rust-side plugin component support
+- `CircuitGraph::add_plugin_component` for pin-aware plugin component creation
+- New Rust module: `plugins/` with manifest parser and Lua sandbox loader
+- New dependency: `mlua 0.10` with all features
+
 ### Added (Phase 4 — 皮肤与导出 + 调试工具)
 - **皮肤/素材系统**: 支持 .cfskin 格式的元件贴图替换、连线样式虚线/发光、网格点阵/十字模式
 - **.circuitforge 打包**: zip 格式完整项目导出/导入，含电路、自定义元件、规则包、皮肤

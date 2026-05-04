@@ -48,7 +48,7 @@ pub enum SimMode {
     TickDriven,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ComponentKind {
     // Phase 1 existing
     And,
@@ -70,6 +70,7 @@ pub enum ComponentKind {
     Merger,
     SubCircuit(SubCircuitDefId),
     LuaScript(u32),
+    Plugin(String, String),
 }
 
 impl ComponentKind {
@@ -94,6 +95,7 @@ impl ComponentKind {
             ComponentKind::Merger => (4, 1),
             ComponentKind::SubCircuit(_) => (0, 0),
             ComponentKind::LuaScript(_) => (0, 0),
+            ComponentKind::Plugin(_, _) => (0, 0),
         }
     }
 }

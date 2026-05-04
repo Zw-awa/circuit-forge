@@ -5,3 +5,7 @@ pub mod custom_cmds;
 pub mod skin_cmds;
 pub mod packaging_cmds;
 pub mod debug_cmds;
+pub mod benchmark_cmds;
+pub mod plugin_cmds;
+pub mod keybinding_cmds;
+pub mod workshop_cmds;

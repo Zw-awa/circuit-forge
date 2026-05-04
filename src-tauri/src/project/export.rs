@@ -103,7 +103,7 @@ fn collect_nested_deps(
     visited_lua: &mut HashSet<u32>,
 ) {
     for comp in def.inner_graph.components.values() {
-        match comp.kind {
+        match comp.kind.clone() {
             ComponentKind::SubCircuit(inner_id) => {
                 if visited_sub.insert(inner_id) {
                     if let Some(inner_def) = sub_reg.get(inner_id) {
