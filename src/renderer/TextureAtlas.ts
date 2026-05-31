@@ -6,14 +6,53 @@ export function generateTextureAtlas(theme: 'dark' | 'light' = 'dark'): HTMLCanv
 
   const isDark = theme === 'dark';
   const bgFill = isDark ? '#1e1e2e' : '#f0f0f5';
-  const bodyFill = isDark ? '#353550' : '#d0d0e0';
+  const bodyFill = isDark ? 'rgba(53,53,80,0.75)' : 'rgba(208,208,224,0.75)';
   const bodyStroke = isDark ? '#7c6ff0' : '#6c5ce7';
   const textFill = isDark ? '#e0e0e0' : '#1a1a2e';
   const altFill = isDark ? '#3a3a5c' : '#c8c8e0';
   const signalGreen = isDark ? '#4ade80' : '#22c55e';
 
+  function drawRoundedRect(x: number, y: number, w: number, h: number, r: number) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  function drawAndBody(bx: number, by: number, bw: number, bh: number) {
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx, by + bh);
+    ctx.arcTo(bx + bw * 0.7, by + bh, bx + bw, by + bh * 0.5, bw * 0.5);
+    ctx.arcTo(bx + bw * 0.7, by, bx, by, bw * 0.5);
+    ctx.closePath();
+  }
+
+  function drawOrBody(bx: number, by: number, bw: number, bh: number) {
+    ctx.beginPath();
+    ctx.moveTo(bx + bw * 0.25, by);
+    ctx.quadraticCurveTo(bx - 2, by + bh * 0.5, bx + bw * 0.25, by + bh);
+    ctx.arcTo(bx + bw * 0.7, by + bh, bx + bw, by + bh * 0.5, bw * 0.5);
+    ctx.arcTo(bx + bw * 0.7, by, bx + bw * 0.25, by, bw * 0.5);
+    ctx.closePath();
+  }
+
+  function drawNotBody(bx: number, by: number, bw: number, bh: number) {
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + bw * 0.8, by + bh * 0.5);
+    ctx.lineTo(bx, by + bh);
+    ctx.closePath();
+  }
+
   ctx.fillStyle = bgFill;
-  ctx.fillRect(0, 0, 1024, 64);
 
   const kinds = [
     'And', 'Or', 'Not', 'Nand', 'Xor', 'Switch', 'Led',
@@ -30,24 +69,45 @@ export function generateTextureAtlas(theme: 'dark' | 'light' = 'dark'): HTMLCanv
   kinds.forEach((kind, i) => {
     const x = i * 64;
 
-      // Draw component body (rounded rect)
-      ctx.fillStyle = bodyFill;
-      ctx.strokeStyle = bodyStroke;
+    ctx.fillStyle = bodyFill;
+    ctx.strokeStyle = bodyStroke;
     ctx.lineWidth = 2;
+
     const bx = x + 8, by = 8, bw = 48, bh = 48, r = 6;
-    ctx.beginPath();
-    ctx.moveTo(bx + r, by);
-    ctx.lineTo(bx + bw - r, by);
-    ctx.arcTo(bx + bw, by, bx + bw, by + r, r);
-    ctx.lineTo(bx + bw, by + bh - r);
-    ctx.arcTo(bx + bw, by + bh, bx + bw - r, by + bh, r);
-    ctx.lineTo(bx + r, by + bh);
-    ctx.arcTo(bx, by + bh, bx, by + bh - r, r);
-    ctx.lineTo(bx, by + r);
-    ctx.arcTo(bx, by, bx + r, by, r);
-    ctx.closePath();
+
+    // Draw gate-specific shapes for logic gates
+    if (kind === 'And' || kind === 'Nand') {
+      drawAndBody(bx, by, bw, bh);
+    } else if (kind === 'Or' || kind === 'Xor') {
+      drawOrBody(bx, by, bw, bh);
+    } else if (kind === 'Not') {
+      drawNotBody(bx, by, bw, bh);
+    } else {
+      drawRoundedRect(bx, by, bw, bh, r);
+    }
     ctx.fill();
     ctx.stroke();
+
+    // Negation dot for NAND and NOT
+    if (kind === 'Nand' || kind === 'Not') {
+      ctx.fillStyle = bgFill;
+      ctx.strokeStyle = bodyStroke;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(kind === 'Not' ? x + 54 : x + 52, 32, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // XOR extra curve
+    if (kind === 'Xor') {
+      ctx.strokeStyle = bodyStroke;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + 12, 12);
+      ctx.quadraticCurveTo(x + 18, 32, x + 12, 52);
+      ctx.stroke();
+    }
 
       // Draw label
       ctx.fillStyle = textFill;

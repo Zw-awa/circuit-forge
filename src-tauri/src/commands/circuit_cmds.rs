@@ -110,6 +110,7 @@ pub fn add_wire(
     engine: State<'_, EngineState>,
     start: serde_json::Value,
     end: serde_json::Value,
+    color: Option<u32>,
 ) -> Result<serde_json::Value, String> {
     let mut eng = engine.lock().map_err(|e| e.to_string())?;
 
@@ -127,7 +128,7 @@ pub fn add_wire(
 
     let start_ep = parse_endpoint(&start)?;
     let end_ep = parse_endpoint(&end)?;
-    let (wire_id, net_id) = eng.graph.add_wire(start_ep, end_ep)?;
+    let (wire_id, net_id) = eng.graph.add_wire(start_ep, end_ep, color)?;
     Ok(serde_json::json!({
         "wireId": wire_id,
         "netId": net_id,

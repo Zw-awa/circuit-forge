@@ -13,7 +13,7 @@ function DebugToolbar() {
   const activeHit = useDebugStore((s) => s.activeBreakpointHit);
   const simStatus = useSimulationStore((s) => s.status);
 
-  const isPausedByDebug = simStatus === 'paused';
+  const isPausedByDebug = simStatus === 'paused' && activeHit !== null;
 
   if (!isPausedByDebug) return null;
 
@@ -75,7 +75,9 @@ function DebugToolbar() {
           className="btn btn-sm btn-danger"
           onClick={async () => {
             useDebugStore.getState().setActiveBreakpointHit(null);
+            useDebugStore.getState().setIsDebugging(false);
             await simPause();
+            useSimulationStore.getState().setStatus('stopped');
           }}
           title={t('debug.stop')}
         >

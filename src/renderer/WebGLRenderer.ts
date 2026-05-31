@@ -143,8 +143,8 @@ export class WebGLRenderer {
     this.componentLayer.clearGhostComponent();
   }
 
-  setWirePreview(segments: WireSegment[]): void {
-    this.wireLayer.setWirePreview(segments);
+  setWirePreview(segments: WireSegment[], color?: number): void {
+    this.wireLayer.setWirePreview(segments, color);
   }
 
   clearWirePreview(): void {

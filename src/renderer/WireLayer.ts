@@ -60,8 +60,8 @@ export class WireLayer {
   private instanceVao: WebGLVertexArrayObject;
   private instanceBuffer!: WebGLBuffer;
   private wireInstances: WireSegmentInstance[] = [];
-  private previewSegments: WireSegment[] = [];
   private previewColor: [number, number, number] = [0.7, 0.7, 0.5];
+  private previewSegments: WireSegment[] = [];
   private instancesDirty = true;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -161,7 +161,7 @@ export class WireLayer {
       }
       return [0.42, 0.45, 0.51];
     }
-    return [0.227, 0.227, 0.314];
+    return [0.75, 0.70, 0.38];
   }
 
   private buildWireInstances(): void {
@@ -204,8 +204,17 @@ export class WireLayer {
     }
   }
 
-  setWirePreview(segments: WireSegment[]): void {
+  setWirePreview(segments: WireSegment[], color?: number): void {
     this.previewSegments = segments;
+    if (color !== undefined && color !== 0) {
+      this.previewColor = [
+        ((color >>> 16) & 0xFF) / 255,
+        ((color >>> 8) & 0xFF) / 255,
+        (color & 0xFF) / 255,
+      ];
+    } else {
+      this.previewColor = [0.7, 0.7, 0.5];
+    }
   }
 
   clearWirePreview(): void {

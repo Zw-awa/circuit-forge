@@ -71,4 +71,5 @@ export { simulationStore };
 listenBreakpointHit((payload) => {
   debugStore.getState().setActiveBreakpointHit(payload);
   debugStore.getState().setIsDebugging(true);
+  simulationStore.getState().setStatus('paused');
 });

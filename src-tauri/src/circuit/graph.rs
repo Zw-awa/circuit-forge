@@ -47,6 +47,12 @@ impl CircuitGraph {
             ComponentKind::LuaScript(_) => return Err("use add_lua_component instead".into()),
             _ => {}
         }
+        // Prevent overlap: check if position is already occupied
+        for c in self.components.values() {
+            if (c.x - x).abs() < 1.05 && (c.y - y).abs() < 1.05 {
+                return Err("position already occupied by another component".into());
+            }
+        }
         let comp_id = self.alloc_id();
 
         let kind_for_checks = kind.clone();
@@ -240,13 +246,13 @@ impl CircuitGraph {
         Ok(())
     }
 
-    pub fn add_wire(&mut self, start: WireEndpoint, end: WireEndpoint) -> Result<(WireId, NetId), String> {
+    pub fn add_wire(&mut self, start: WireEndpoint, end: WireEndpoint, color: Option<u32>) -> Result<(WireId, NetId), String> {
         match (&start, &end) {
             (WireEndpoint::Pin(pa), WireEndpoint::Pin(pb)) => {
                 let pa_pin = self.pins.get(pa).ok_or_else(|| format!("pin {} not found", pa))?;
                 let pb_pin = self.pins.get(pb).ok_or_else(|| format!("pin {} not found", pb))?;
-                if pa_pin.is_output == pb_pin.is_output {
-                    return Err("cannot connect two input pins or two output pins".into());
+                if pa_pin.is_output && pb_pin.is_output {
+                    return Err("cannot connect two output pins together".into());
                 }
             }
             (WireEndpoint::Pin(pa), WireEndpoint::Junction(jb)) => {
@@ -331,7 +337,7 @@ impl CircuitGraph {
                 start: start.clone(),
                 end: end.clone(),
                 net_id,
-                color: None,
+                color,
             },
         );
 
@@ -418,6 +424,17 @@ impl CircuitGraph {
         x: f32,
         y: f32,
     ) -> Result<(), String> {
+        let _comp = self
+            .components
+            .get(&comp_id)
+            .ok_or("component not found")?;
+
+        for c in self.components.values() {
+            if c.id != comp_id && (c.x - x).abs() < 1.05 && (c.y - y).abs() < 1.05 {
+                return Err("target position already occupied".into());
+            }
+        }
+
         let comp = self
             .components
             .get_mut(&comp_id)

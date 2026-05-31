@@ -77,9 +77,9 @@ export async function moveComponent(componentId: number, x: number, y: number): 
   return invoke("move_component", { componentId, x, y });
 }
 
-export async function addWire(start: WireEndpoint, end: WireEndpoint): Promise<AddWireResult> {
+export async function addWire(start: WireEndpoint, end: WireEndpoint, color?: number): Promise<AddWireResult> {
   const toRpc = (ep: WireEndpoint) => ep.type === 'pin' ? { Pin: ep.id } : { Junction: ep.id };
-  return invoke<AddWireResult>("add_wire", { start: toRpc(start), end: toRpc(end) });
+  return invoke<AddWireResult>("add_wire", { start: toRpc(start), end: toRpc(end), color });
 }
 
 export async function removeWire(wireId: number): Promise<void> {

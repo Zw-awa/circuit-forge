@@ -35,6 +35,14 @@ export class PlaceTool implements Tool {
     const kind = state.placingComponentKind;
     if (!kind) return;
 
+    // Prevent overlap: check if position is already occupied
+    const components = state.components;
+    for (const comp of components.values()) {
+      if (Math.abs(comp.x - e.gridX) < 1.05 && Math.abs(comp.y - e.gridY) < 1.05) {
+        return;
+      }
+    }
+
     const cmd = new PlaceComponentCmd(
       kind as ComponentKind,
       e.gridX,
